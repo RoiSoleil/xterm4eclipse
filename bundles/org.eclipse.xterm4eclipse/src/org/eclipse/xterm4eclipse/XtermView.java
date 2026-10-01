@@ -70,6 +70,14 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 	private static final boolean IS_WINDOWS = OS_NAME.contains("win"); //$NON-NLS-1$
 	private static final boolean IS_MAC = OS_NAME.contains("mac"); //$NON-NLS-1$
 	private static final long FAILED_START_MILLIS = 2000;
+	private static final String FOCUS_IN = "\u001b[I"; //$NON-NLS-1$
+	private static final String FOCUS_OUT = "\u001b[O"; //$NON-NLS-1$
+	/** Output within this delay after a key press is its echo. */
+	private static final long ECHO_MILLIS = 1000;
+	/** Output must flow at least this long to count as work whose end is worth signalling. */
+	private static final long WORK_MILLIS = 2000;
+	/** Silence after which the work of a foreground program is considered finished. */
+	private static final long QUIET_MILLIS = 1500;
 	private static final String MEMENTO_SHELL = "shell"; //$NON-NLS-1$
 	private static final String MEMENTO_DIRECTORY = "directory"; //$NON-NLS-1$
 
@@ -103,7 +111,18 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 	private final Image[] activityImages = new Image[Activity.values().length];
 	private Activity activity = Activity.IDLE;
 	private ScheduledExecutorService activityPoller;
-	private boolean lastBusy;
+	private volatile boolean lastBusy;
+
+	/**
+	 * A program that stays in the foreground, such as Claude Code, never "finishes": the end of its
+	 * work shows as output that flows for a while (spinner, progress) and then stops. The output that
+	 * closely follows a key press is the echo of the typing, not work.
+	 */
+	private final Object outputActivity = new Object();
+	private long lastInputMillis;
+	private long lastOutputMillis;
+	/** Start of the current stretch of continuous output, 0 if there is none. */
+	private long workStartMillis;
 	private String commandLine;
 	private long sessionStart;
 	/** Screen content saved before the last Eclipse shutdown, replayed once when the view opens. */
@@ -130,9 +149,7 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 		public void partActivated(IWorkbenchPartReference ref) {
 			if (ref.getPart(false) == XtermView.this) {
 				setKeyFilterEnabled(false);
-				if (activity == Activity.DONE) {
-					setActivity(Activity.IDLE);
-				}
+				clearDone();
 			}
 		}
 
@@ -458,12 +475,25 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 		return dialog.open() == Window.OK ? dialog.getValue() : null;
 	}
 
-	/** Runs on the poller thread: detects when a foreground command starts or ends. */
+	/**
+	 * Runs on the poller thread: detects when a foreground command starts or ends, and when a program
+	 * that keeps running goes quiet after having worked.
+	 */
 	private void pollActivity() {
 		try {
 			PtySession current = session;
 			boolean busy = current != null && current.isBusy();
-			if (busy != lastBusy && !display.isDisposed()) {
+			boolean wentQuiet = false;
+			synchronized (outputActivity) {
+				if (workStartMillis != 0 && System.currentTimeMillis() - lastOutputMillis >= QUIET_MILLIS) {
+					wentQuiet = busy && lastBusy && lastOutputMillis - workStartMillis >= WORK_MILLIS;
+					workStartMillis = 0;
+				}
+			}
+			if (display.isDisposed()) {
+				return;
+			}
+			if (busy != lastBusy) {
 				lastBusy = busy;
 				display.asyncExec(() -> {
 					if (busy) {
@@ -472,9 +502,22 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 						signalDone();
 					}
 				});
+			} else if (wentQuiet) {
+				display.asyncExec(() -> {
+					if (!browser.isDisposed()) {
+						signalDone();
+					}
+				});
 			}
 		} catch (RuntimeException e) {
 			// Keep polling: an exception would cancel the schedule.
+		}
+	}
+
+	/** The user has seen the mark: back to the icon that tells what the shell is doing. */
+	private void clearDone() {
+		if (activity == Activity.DONE) {
+			setActivity(lastBusy ? Activity.RUNNING : Activity.IDLE);
 		}
 	}
 
@@ -622,8 +665,13 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 		if (data == null || data.isEmpty()) {
 			return;
 		}
-		if (activity == Activity.DONE) {
-			setActivity(Activity.IDLE);
+		// Focus reports are sent by the terminal itself when the user switches to another view: they
+		// are not typing, and must not hide that the program is still working.
+		if (!data.equals(FOCUS_IN) && !data.equals(FOCUS_OUT)) {
+			clearDone();
+			synchronized (outputActivity) {
+				lastInputMillis = System.currentTimeMillis();
+			}
 		}
 		if (session == null || !session.isAlive()) {
 			return;
@@ -633,6 +681,15 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 
 	@Override
 	public void output(PtySession source, byte[] data, int length) {
+		synchronized (outputActivity) {
+			long now = System.currentTimeMillis();
+			if (now - lastInputMillis < ECHO_MILLIS) {
+				workStartMillis = 0;
+			} else if (workStartMillis == 0) {
+				workStartMillis = now;
+			}
+			lastOutputMillis = now;
+		}
 		synchronized (pending) {
 			// Back pressure: do not read faster than the browser can render.
 			while (pending.size() > MAX_PENDING_BYTES && source.isAlive()) {

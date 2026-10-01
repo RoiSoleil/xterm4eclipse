@@ -241,6 +241,44 @@ class XtermViewTest {
 	}
 
 	@Test
+	void programThatKeepsRunningTakesTheFocusWhenItsWorkGoesQuiet() throws Exception {
+		// Like Claude Code answering a prompt: output flows for a few seconds, then the program waits.
+		XtermPlugin.preferences().setValue(XtermPlugin.PREF_FOCUS_ON_FINISH, true);
+		XtermView view = open();
+		type(view, "sh -c 'for i in $(seq 45); do printf .; sleep 0.1; done; echo quiet; sleep 30'\r");
+		await("work in progress", () -> screen(view).contains("....."));
+		assertEquals(0, workbench.page.count("activate"));
+		// The user switches to another view shortly before the end: the terminal reports the loss of
+		// focus to the program, which is not typing.
+		pump(2800);
+		type(view, "\u001b[O");
+		await("view activated once quiet", () -> workbench.page.count("activate") == 1);
+		assertTrue(screen(view).contains("quiet"), "not before the output stopped");
+		assertNotSame(titleImages.get(0), titleImages.get(titleImages.size() - 1), "done icon after the running one");
+
+		// Coming back to a program that still runs shows it as running again.
+		workbench.partListeners.get(0).partActivated(workbench.reference(view));
+		assertSame(titleImages.get(0), titleImages.get(titleImages.size() - 1));
+		type(view, "\u0003");
+	}
+
+	@Test
+	void shortOutputAndTypingAreNotMistakenForFinishedWork() throws Exception {
+		XtermPlugin.preferences().setValue(XtermPlugin.PREF_FOCUS_ON_FINISH, true);
+		XtermView view = open();
+		// A program that prints briefly, then echoes what the user types for a few seconds.
+		type(view, "sh -c 'echo started; sleep 8'\r");
+		await("started", () -> screen(view).contains("started\n"));
+		for (int i = 0; i < 25; i++) {
+			type(view, "x");
+			pump(150);
+		}
+		pump(2500);
+		assertEquals(0, workbench.page.count("activate"), "neither the short output nor the echo is work");
+		await("end of the command", () -> workbench.page.count("activate") == 1);
+	}
+
+	@Test
 	void historyIsNotRestoredWhenTheUserDisabledIt() throws Exception {
 		XtermView view = open();
 		run(view, "echo marker-$((6*7))", "marker-42");
