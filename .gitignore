@@ -1,0 +1,17 @@
+# Eclipse
+.settings/
+
+# Maven
+log/
+target/
+
+# Local build and test scripts
+/build/
+/dist/
+/.cache/
+bin/
+
+*.class
+*.log
+hs_err_pid*
+.DS_Store

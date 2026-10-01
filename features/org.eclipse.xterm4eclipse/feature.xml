@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feature
+      id="org.eclipse.xterm4eclipse.feature"
+      label="Xterm4Eclipse"
+      version="0.1.0.qualifier"
+      provider-name="RoiSoleil">
+
+   <description url="https://github.com/RoiSoleil/xterm4eclipse">
+      A terminal view for Eclipse rendered by xterm.js, the terminal emulator of VS Code.
+   </description>
+
+   <license url="https://www.eclipse.org/legal/epl-v20.html">
+      Eclipse Public License, v2.0. xterm.js is distributed under the MIT license.
+   </license>
+
+   <plugin
+         id="org.eclipse.xterm4eclipse"
+         download-size="0"
+         install-size="0"
+         version="0.0.0"
+         unpack="false"/>
+
+</feature>
