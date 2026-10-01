@@ -6,6 +6,46 @@ on:
 permissions:
    contents: write
 jobs:
+   test:
+      runs-on: ubuntu-latest
+      env:
+         ECLIPSE_URL: https://www.eclipse.org/downloads/download.php?file=/technology/epp/downloads/release/2026-06/R/eclipse-committers-2026-06-R-linux-gtk-x86_64.tar.gz&r=1
+      steps:
+      -  name: Checkout
+         uses: actions/checkout@v5
+      -  name: Set up JDK
+         uses: actions/setup-java@v5
+         with:
+            distribution: temurin
+            java-version: 21
+      -  name: Cache Eclipse
+         id: eclipse
+         uses: actions/cache@v4.2.4
+         with:
+           path: ~/eclipse
+           key: eclipse-committers-2026-06-R-linux-gtk-x86_64
+      -  name: Download Eclipse
+         if: steps.eclipse.outputs.cache-hit != 'true'
+         run: curl -sfL "$ECLIPSE_URL" | tar xz -C ~
+      -  name: Install the browser and a display
+         run: |
+            sudo apt-get update
+            sudo apt-get install -y xvfb libwebkit2gtk-4.1-0 libgtk-3-0
+            # The sandbox of WebKitGTK needs user namespaces, which the runner image restricts.
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      -  name: Test
+         env:
+            ECLIPSE_HOME: /home/runner/eclipse
+            WEBKIT_DISABLE_COMPOSITING_MODE: 1
+            WEBKIT_DISABLE_DMABUF_RENDERER: 1
+         run: xvfb-run -a -s "-screen 0 1280x1024x24" ./test.sh
+      -  name: Upload coverage to Codecov
+         if: always()
+         uses: codecov/codecov-action@v5
+         with:
+            files: build/coverage.xml
+            token: ${{ secrets.CODECOV_TOKEN }}
+            verbose: true
    build:
       runs-on: ubuntu-latest
       steps:

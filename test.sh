@@ -39,7 +39,7 @@ java -javaagent:".cache/org.jacoco.agent-$JACOCO-runtime.jar=destfile=build/jaco
 	--details=tree --disable-banner "$@" || STATUS=$?
 
 java -jar ".cache/org.jacoco.cli-$JACOCO-nodeps.jar" report build/jacoco.exec --classfiles build/classes \
-	--sourcefiles $BUNDLE/src --csv build/coverage.csv --html build/coverage >/dev/null
+	--sourcefiles $BUNDLE/src --csv build/coverage.csv --xml build/coverage.xml --html build/coverage >/dev/null
 awk -F, -v min="$MIN_COVERAGE" 'NR > 1 { missed += $8; covered += $9; printf "  %-28s %5.1f%%\n", $3, 100 * $9 / ($8 + $9) }
 	END { total = 100 * covered / (missed + covered); printf "Line coverage: %.1f%% (minimum %d%%), report in build/coverage/index.html\n", total, min; exit total < min }' \
 	build/coverage.csv || STATUS=1
