@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
@@ -17,7 +18,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
+import org.eclipse.core.commands.ExecutionEvent;
+import org.eclipse.core.expressions.EvaluationContext;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.jface.action.ActionContributionItem;
@@ -35,7 +39,12 @@ import org.eclipse.swt.widgets.Event;
 import org.eclipse.swt.widgets.Menu;
 import org.eclipse.swt.widgets.MenuItem;
 import org.eclipse.swt.widgets.Shell;
+import org.eclipse.ui.ISources;
+import org.eclipse.ui.IViewReference;
+import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.IWorkbenchPartConstants;
+import org.eclipse.ui.IWorkbenchWindow;
+import org.eclipse.ui.PartInitException;
 import org.eclipse.ui.XMLMemento;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -458,6 +467,40 @@ class XtermViewTest {
 		creator.dispose();
 		assertTrue(menu.isDisposed());
 		assertNotEquals(view, opened.get(0));
+	}
+
+	@Test
+	void toolbarCommandOpensATerminalWithTheDefaultShell() throws Exception {
+		List<Object[]> shown = new ArrayList<>();
+		workbench.page.on("showView", args -> {
+			shown.add(args);
+			return null;
+		});
+		IWorkbenchWindow window = new Fake().on("getActivePage", args -> workbench.page.as(IWorkbenchPage.class))
+				.as(IWorkbenchWindow.class);
+		EvaluationContext context = new EvaluationContext(null, new Object());
+		context.addVariable(ISources.ACTIVE_WORKBENCH_WINDOW_NAME, window);
+		ExecutionEvent event = new ExecutionEvent(null, Map.of(), null, context);
+		OpenTerminalHandler handler = new OpenTerminalHandler();
+
+		// First terminal: the plain view. Next ones: copies with their own identifier.
+		handler.execute(event);
+		assertEquals(XtermView.ID, shown.get(0)[0]);
+		assertNull(shown.get(0)[1]);
+		workbench.page.on("findViewReference", args -> new Fake().as(IViewReference.class));
+		handler.execute(event);
+		assertTrue(((String) shown.get(1)[1]).startsWith("t"));
+
+		workbench.page.on("showView", args -> {
+			throw new IllegalStateException(new PartInitException("no more views"));
+		});
+		assertThrows(IllegalStateException.class, () -> handler.execute(event));
+
+		// No page in the window (workbench starting or closing): nothing to do.
+		IWorkbenchWindow empty = new Fake().as(IWorkbenchWindow.class);
+		context.addVariable(ISources.ACTIVE_WORKBENCH_WINDOW_NAME, empty);
+		assertNull(handler.execute(event));
+		assertEquals(2, shown.size());
 	}
 
 	@Test

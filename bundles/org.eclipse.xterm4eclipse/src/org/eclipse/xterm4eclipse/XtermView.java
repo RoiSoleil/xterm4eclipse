@@ -362,11 +362,20 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 	}
 
 	private void openTerminal(String shellCommandLine) {
-		nextCommandLine = shellCommandLine;
 		try {
-			getSite().getPage().showView(ID, "t" + System.currentTimeMillis(), IWorkbenchPage.VIEW_ACTIVATE); //$NON-NLS-1$
+			open(getSite().getPage(), shellCommandLine);
 		} catch (PartInitException e) {
 			XtermPlugin.log("Could not open a new terminal", e); //$NON-NLS-1$
+		}
+	}
+
+	/** Opens one more terminal in the page, running the given shell. */
+	static void open(IWorkbenchPage page, String shellCommandLine) throws PartInitException {
+		nextCommandLine = shellCommandLine;
+		try {
+			// The first terminal is the plain view, the next ones are numbered copies of it.
+			String secondaryId = page.findViewReference(ID) == null ? null : "t" + System.currentTimeMillis(); //$NON-NLS-1$
+			page.showView(ID, secondaryId, IWorkbenchPage.VIEW_ACTIVATE);
 		} finally {
 			nextCommandLine = null;
 		}

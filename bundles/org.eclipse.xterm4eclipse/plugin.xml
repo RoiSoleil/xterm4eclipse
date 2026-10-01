@@ -23,4 +23,38 @@
             name="Xterm Terminal"
             class="org.eclipse.xterm4eclipse.XtermPreferencePage"/>
    </extension>
+   <extension point="org.eclipse.ui.commands">
+      <category id="org.eclipse.xterm4eclipse.commands" name="Xterm"/>
+      <command
+            id="org.eclipse.xterm4eclipse.open"
+            categoryId="org.eclipse.xterm4eclipse.commands"
+            name="Open an Xterm Terminal"
+            description="Opens a new Xterm terminal running the default shell"/>
+   </extension>
+   <extension point="org.eclipse.ui.handlers">
+      <handler
+            commandId="org.eclipse.xterm4eclipse.open"
+            class="org.eclipse.xterm4eclipse.OpenTerminalHandler"/>
+   </extension>
+   <extension point="org.eclipse.ui.commandImages">
+      <image
+            commandId="org.eclipse.xterm4eclipse.open"
+            icon="icons/xterm.png"/>
+   </extension>
+   <extension point="org.eclipse.ui.bindings">
+      <key
+            commandId="org.eclipse.xterm4eclipse.open"
+            contextId="org.eclipse.ui.contexts.window"
+            schemeId="org.eclipse.ui.defaultAcceleratorConfiguration"
+            sequence="M1+M2+M3+X"/>
+   </extension>
+   <extension point="org.eclipse.ui.menus">
+      <menuContribution locationURI="toolbar:org.eclipse.ui.main.toolbar?after=additions">
+         <toolbar id="org.eclipse.xterm4eclipse.toolbar">
+            <command
+                  commandId="org.eclipse.xterm4eclipse.open"
+                  style="push"/>
+         </toolbar>
+      </menuContribution>
+   </extension>
 </plugin>
