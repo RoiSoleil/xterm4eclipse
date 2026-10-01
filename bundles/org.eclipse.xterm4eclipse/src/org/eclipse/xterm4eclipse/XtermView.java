@@ -806,8 +806,9 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 	@Override
 	public void setFocus() {
 		if (browser != null && !browser.isDisposed()) {
+			// The page gives the keyboard to the terminal when it receives the focus: running a script
+			// here would block the UI until the browser answers.
 			browser.setFocus();
-			browser.execute("window.xtermFocus && xtermFocus()"); //$NON-NLS-1$
 		}
 	}
 

@@ -208,7 +208,7 @@
 			doFit();
 		};
 		window.xtermTheme = function () { return term.options.theme; };
-		window.xtermFocus = function () { term.focus(); };
+		window.addEventListener('focus', function () { term.focus(); });
 		window.xtermClear = function () { term.clear(); };
 
 		// The view keeps the browser hidden until now, to avoid a white flash while loading. A hidden
