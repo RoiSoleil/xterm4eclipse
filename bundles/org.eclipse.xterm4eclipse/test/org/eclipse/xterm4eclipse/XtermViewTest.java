@@ -22,6 +22,7 @@ import java.util.Map;
 
 import org.eclipse.core.commands.ExecutionEvent;
 import org.eclipse.core.expressions.EvaluationContext;
+import org.eclipse.core.expressions.IEvaluationContext;
 import org.eclipse.core.resources.IContainer;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
@@ -29,6 +30,8 @@ import org.eclipse.core.resources.IResource;
 import org.eclipse.jface.action.ActionContributionItem;
 import org.eclipse.jface.action.IAction;
 import org.eclipse.jface.action.IMenuCreator;
+import org.eclipse.core.runtime.IPath;
+import org.eclipse.jface.util.LocalSelectionTransfer;
 import org.eclipse.jface.viewers.ISelection;
 import org.eclipse.jface.viewers.StructuredSelection;
 import org.eclipse.swt.SWT;
@@ -50,6 +53,7 @@ import org.eclipse.ui.IWorkbenchPartConstants;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.PartInitException;
 import org.eclipse.ui.XMLMemento;
+import org.eclipse.ui.services.IEvaluationService;
 import org.eclipse.ui.services.IServiceLocator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -386,6 +390,22 @@ class XtermViewTest {
 			view.browser.execute("javaCopy(''); javaCopy('copied-by-test')");
 			assertEquals("copied-by-test", clipboard.getContents(TextTransfer.getInstance()));
 			assertEquals("copied-by-test", view.browser.evaluate("return javaPaste()"));
+
+			// Right click pastes, unless the program tracks the mouse and handles the click itself.
+			String rightClick = "document.querySelector('#terminal').dispatchEvent(new MouseEvent('contextmenu', "
+					+ "{bubbles: true, cancelable: true, button: 2, shiftKey: %s}))";
+			type(view, "echo ");
+			view.browser.execute(String.format(rightClick, false));
+			type(view, "\r");
+			await("pasted once", () -> screen(view).contains("\ncopied-by-test\n"));
+			type(view, "printf '\\033[?1000h'; echo tracking\r");
+			await("mouse tracking", () -> screen(view).contains("\ntracking"));
+			type(view, "echo [");
+			view.browser.execute(String.format(rightClick, false));
+			pump(200);
+			view.browser.execute(String.format(rightClick, true));
+			type(view, "]\r");
+			await("pasted once with Shift", () -> screen(view).contains("\n[copied-by-test]\n"));
 		} finally {
 			if (previous != null) {
 				clipboard.setContents(new Object[] {previous}, new Transfer[] {TextTransfer.getInstance()});
@@ -592,10 +612,42 @@ class XtermViewTest {
 		assertNull(XtermView.directoryOf("not a resource"));
 		assertNull(XtermView.directoryOf(new Fake().on("getParent", args -> new Fake().as(IContainer.class)).as(IFile.class)));
 
-		// Nothing usable selected, or no page: no directory is forced, nothing breaks.
+		// The selection may change while the menu is shown: the one the menu was opened on counts.
+		menu.dispose();
+		menu = new Menu(workbench.shells.get(0));
+		contribution.fill(menu, 0);
 		selection[0] = new StructuredSelection();
 		menu.getItem(bash).notifyListeners(SWT.Selection, new Event());
 		assertEquals(2, opened.size());
+		await("shell prompt", () -> screen(opened.get(1)).contains("$"));
+		run(opened.get(1), "echo second-in=$PWD", "second-in=/usr/lib");
+
+		// A context menu tells which element it was opened on, whatever the active part selects.
+		IEvaluationContext state = new Fake()
+				.on("getVariable", args -> ISources.ACTIVE_MENU_SELECTION_NAME.equals(args[0])
+						? new StructuredSelection(new Fake().on("getLocation",
+								a -> org.eclipse.core.runtime.Path.fromOSString("/usr/share")).as(IContainer.class))
+						: null)
+				.as(IEvaluationContext.class);
+		IEvaluationService evaluation = new Fake().on("getCurrentState", args -> state).as(IEvaluationService.class);
+		ShowInXtermMenu fromMenu = new ShowInXtermMenu();
+		fromMenu.initialize(new Fake()
+				.on("getService", args -> args[0] == IEvaluationService.class ? evaluation : window)
+				.as(IServiceLocator.class));
+		menu.dispose();
+		menu = new Menu(workbench.shells.get(0));
+		fromMenu.fill(menu, 0);
+		menu.getItem(bash).notifyListeners(SWT.Selection, new Event());
+		assertEquals(3, opened.size());
+		await("shell prompt", () -> screen(opened.get(2)).contains("$"));
+		run(opened.get(2), "echo menu-in=$PWD", "menu-in=/usr/share");
+
+		// Nothing usable selected, or no page: no directory is forced, nothing breaks.
+		menu.dispose();
+		menu = new Menu(workbench.shells.get(0));
+		contribution.fill(menu, 0);
+		menu.getItem(bash).notifyListeners(SWT.Selection, new Event());
+		assertEquals(4, opened.size());
 		workbench.page.on("showView", args -> {
 			throw new IllegalStateException(new PartInitException("no more views"));
 		});
@@ -624,5 +676,120 @@ class XtermViewTest {
 		assertNull(XtermView.parseDirectory("file://host"));
 		assertNull(XtermView.parseDirectory(" "));
 		assertNull(XtermView.parseDirectory(null));
+	}
+
+	/** Drops data on the terminal as the browser does when the user releases a drag over it. */
+	private static void drop(XtermView view, String uris, String text) {
+		view.browser.execute("var data = new DataTransfer();" //
+				+ (uris == null ? "" : "data.setData('text/uri-list', '" + uris + "');") //
+				+ (text == null ? "" : "data.setData('text/plain', '" + text + "');") //
+				+ "document.querySelector('.xterm').dispatchEvent(new DragEvent('drop', "
+				+ "{dataTransfer: data, bubbles: true, cancelable: true}));");
+	}
+
+	@Test
+	void droppedFilesAreTypedAsQuotedPaths() throws Exception {
+		XtermView view = open();
+		type(view, "printf '<%s>' ");
+		drop(view, "# comment\\r\\nfile:///tmp/my%20dir/it%27s\\r\\nfile:///usr/share\\r\\nhttp://example.org/", null);
+		type(view, "\r");
+		await("dropped paths", () -> screen(view).contains("</tmp/my dir/it's></usr/share>"));
+
+		// Resources dragged from an Eclipse view: the browser does not know their path.
+		IResource resource = new Fake().on("getLocation", args -> IPath.fromOSString("/usr/lib")).as(IResource.class);
+		LocalSelectionTransfer.getTransfer().setSelection(new StructuredSelection(new Object[] {resource, new File("/etc"), "other"}));
+		try {
+			type(view, "printf '[%s]' ");
+			drop(view, "", "ignored");
+			type(view, "\r");
+			await("dragged resources", () -> screen(view).contains("[/usr/lib][/etc]"));
+		} finally {
+			LocalSelectionTransfer.getTransfer().setSelection(null);
+		}
+
+		// Plain text, from an editor for instance.
+		type(view, "echo ");
+		drop(view, null, "dropped-text");
+		type(view, "\r");
+		await("dropped text", () -> screen(view).contains("dropped-text\n"));
+	}
+
+	@Test
+	void droppedPathsAreQuotedForTheShell() {
+		assertEquals("/usr/share '/tmp/a b' ", XtermView.quotePaths(List.of("/usr/share", "/tmp/a b"), "/bin/bash"));
+		assertEquals("'it'\\''s' ", XtermView.quotePaths(List.of("it's"), "zsh -l"));
+		assertEquals("C:/Users/me/a.txt 'C:/Program Files/x' ",
+				XtermView.quotePaths(List.of("C:\\Users\\me\\a.txt", "C:\\Program Files\\x"), "\"C:\\Git\\bin\\bash.exe\" --login -i"));
+		assertEquals("C:\\Users\\me \"C:\\Program Files\\x\" \"a&b\" ",
+				XtermView.quotePaths(List.of("C:\\Users\\me", "C:\\Program Files\\x", "a&b"), "cmd.exe"));
+		assertEquals("C:\\Users\\me 'C:\\My Files\\it''s' ",
+				XtermView.quotePaths(List.of("C:\\Users\\me", "C:\\My Files\\it's"), "powershell.exe -NoLogo"));
+		assertEquals("'a b' ", XtermView.quotePaths(List.of("a b"), "pwsh"));
+		assertEquals("x ", XtermView.quotePaths(List.of("x"), null));
+		assertEquals(List.of(new File("C:/Users/me").getPath()), XtermView.droppedPaths("file:/C:/Users/me"));
+		assertEquals(List.of(new File("//server/share/x").getPath()), XtermView.droppedPaths("file://server/share/x"));
+		assertEquals(List.of(new File("/tmp").getPath()), XtermView.droppedPaths("file://localhost/tmp"));
+		assertEquals(List.of(), XtermView.droppedPaths("file:bad path\nfile:"));
+		assertEquals(List.of(), XtermView.droppedPaths(null));
+	}
+
+	@Test
+	void closingAskForConfirmationWhileACommandRuns() throws Exception {
+		List<Boolean> answers = new ArrayList<>(List.of(false, true));
+		int[] asked = {0};
+		List<Integer> properties = new ArrayList<>();
+		XtermView view = open(new XtermView() {
+			@Override
+			boolean confirmClose() {
+				asked[0]++;
+				return answers.remove(0);
+			}
+		});
+		view.addPropertyListener((source, property) -> properties.add(property));
+		assertFalse(view.isDirty());
+		assertTrue(view.isSaveOnCloseNeeded());
+		assertFalse(view.isSaveAsAllowed());
+		assertEquals(XtermView.NO, view.promptToSaveOnClose(), "nothing runs: closed without asking");
+		assertEquals(0, asked[0]);
+
+		type(view, "sleep 30\r");
+		await("dirty while the command runs", () -> properties.contains(IWorkbenchPartConstants.PROP_DIRTY));
+		assertTrue(view.isDirty());
+		assertEquals(XtermView.CANCEL, view.promptToSaveOnClose(), "the user keeps the terminal");
+		assertEquals(XtermView.NO, view.promptToSaveOnClose(), "the user closes it anyway");
+		assertEquals(2, asked[0]);
+		view.doSave(null);
+		view.doSaveAs();
+		assertTrue(view.isDirty(), "saving does not stop the command");
+
+		properties.clear();
+		type(view, "\u0003");
+		await("clean once the command is over", () -> properties.contains(IWorkbenchPartConstants.PROP_DIRTY));
+		assertFalse(view.isDirty());
+		assertEquals(XtermView.NO, view.promptToSaveOnClose());
+		assertEquals(2, asked[0]);
+	}
+
+	@Test
+	void stateOfAnEarlierSessionDoesNotOverrideTheChosenDirectory() throws Exception {
+		XMLMemento memento = XMLMemento.createWriteRoot("view");
+		memento.putString("shell", "/bin/sh");
+		memento.putString("directory", "/usr");
+		List<XtermView> opened = new ArrayList<>();
+		workbench.page.on("showView", args -> {
+			try {
+				XtermView view = new XtermView();
+				workbench.open(view, (String) args[1], memento);
+				opened.add(view);
+			} catch (Exception e) {
+				throw new AssertionError(e);
+			}
+			return null;
+		});
+		XtermView.open(workbench.page.as(IWorkbenchPage.class), SHELL, new File("/usr/lib"));
+		XtermView view = opened.get(0);
+		assertEquals("bash", view.getPartName());
+		await("shell prompt", () -> screen(view).contains("$"));
+		run(view, "echo chosen=$PWD", "chosen=/usr/lib");
 	}
 }

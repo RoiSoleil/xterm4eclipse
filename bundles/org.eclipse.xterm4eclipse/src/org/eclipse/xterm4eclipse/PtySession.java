@@ -192,6 +192,9 @@ final class PtySession {
 		env.put("COLORTERM", "truecolor"); //$NON-NLS-1$ //$NON-NLS-2$
 		env.put("TERM_PROGRAM", "xterm4eclipse"); //$NON-NLS-1$ //$NON-NLS-2$
 		if (os.toLowerCase().contains("win")) { //$NON-NLS-1$
+			// Git Bash, MSYS2 and Cygwin login shells go to the home directory unless told to stay in
+			// the one they are started in.
+			env.putIfAbsent("CHERE_INVOKING", "1"); //$NON-NLS-1$ //$NON-NLS-2$
 			if (command[0].toLowerCase().endsWith("cmd.exe")) { //$NON-NLS-1$
 				// Make cmd.exe announce its directory (OSC 9;9) in front of the usual prompt, so that
 				// the view can reopen in the same place: there is no way to ask Windows for it.

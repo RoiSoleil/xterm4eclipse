@@ -8,7 +8,9 @@ import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -17,12 +19,15 @@ import org.eclipse.core.resources.IContainer;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.Adapters;
 import org.eclipse.core.runtime.IPath;
+import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.jface.action.Action;
 import org.eclipse.jface.action.IAction;
 import org.eclipse.jface.action.IMenuCreator;
 import org.eclipse.jface.action.IToolBarManager;
 import org.eclipse.jface.util.IPropertyChangeListener;
+import org.eclipse.jface.util.LocalSelectionTransfer;
 import org.eclipse.jface.dialogs.InputDialog;
+import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.resource.ImageDescriptor;
 import org.eclipse.jface.resource.JFaceResources;
 import org.eclipse.jface.viewers.ISelection;
@@ -48,9 +53,11 @@ import org.eclipse.swt.widgets.MenuItem;
 import org.eclipse.ui.IPartListener2;
 import org.eclipse.ui.IMemento;
 import org.eclipse.ui.ISharedImages;
+import org.eclipse.ui.ISaveablePart2;
 import org.eclipse.ui.IViewSite;
 import org.eclipse.ui.IWorkbench;
 import org.eclipse.ui.IWorkbenchPage;
+import org.eclipse.ui.IWorkbenchPartConstants;
 import org.eclipse.ui.IWorkbenchPartReference;
 import org.eclipse.ui.PartInitException;
 import org.eclipse.ui.keys.IBindingService;
@@ -61,7 +68,7 @@ import org.eclipse.ui.progress.IWorkbenchSiteProgressService;
  * A terminal view rendered by xterm.js (the terminal emulator used by VS Code) inside an SWT
  * browser, connected to a local shell through a pseudo terminal.
  */
-public class XtermView extends ViewPart implements PtySession.Listener {
+public class XtermView extends ViewPart implements PtySession.Listener, ISaveablePart2 {
 
 	public static final String ID = "org.eclipse.xterm4eclipse.view"; //$NON-NLS-1$
 
@@ -89,6 +96,7 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 	private static String nextCommandLine;
 	/** Directory requested by "Show in Xterm" for the view that is about to be created. */
 	private static File nextDirectory;
+	private static long lastSecondaryId;
 
 	Browser browser;
 	private Display display;
@@ -167,7 +175,10 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 	@Override
 	public void init(IViewSite site, IMemento memento) throws PartInitException {
 		super.init(site, memento);
-		if (nextCommandLine != null) {
+		// Opened by the user: the state that Eclipse may still hold for this view from an earlier
+		// session must not override the shell and directory just chosen.
+		boolean requested = nextCommandLine != null;
+		if (requested) {
 			commandLine = nextCommandLine;
 			nextCommandLine = null;
 			workingDirectory = nextDirectory;
@@ -177,7 +188,7 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 		} else {
 			commandLine = ShellProfiles.defaultCommandLine();
 		}
-		if (memento != null) {
+		if (memento != null && !requested) {
 			String directory = memento.getString(MEMENTO_DIRECTORY);
 			if (directory != null && new File(directory).isDirectory()) {
 				workingDirectory = new File(directory);
@@ -312,6 +323,15 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 			Object text = clipboard.getContents(TextTransfer.getInstance());
 			return text instanceof String ? text : ""; //$NON-NLS-1$
 		});
+		function("javaDrop", args -> { //$NON-NLS-1$
+			List<String> paths = droppedPaths((String) args[0]);
+			if (paths.isEmpty()) {
+				// Text dragged from an editor, or files the browser does not give the path of.
+				Object text = args.length > 1 ? args[1] : null;
+				return text instanceof String ? text : ""; //$NON-NLS-1$
+			}
+			return quotePaths(paths, commandLine);
+		});
 		function("javaAttention", args -> { //$NON-NLS-1$
 			signalDone();
 			return null;
@@ -368,7 +388,7 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 			}
 		};
 		newTerminal.setToolTipText("New Terminal (use the arrow to choose a shell)"); //$NON-NLS-1$
-		newTerminal.setImageDescriptor(images.getImageDescriptor(ISharedImages.IMG_OBJ_ADD));
+		newTerminal.setImageDescriptor(ImageDescriptor.createFromFile(XtermView.class, '/' + Activity.IDLE.icon));
 		newTerminal.setMenuCreator(new ShellMenu());
 		toolBar.add(newTerminal);
 
@@ -407,12 +427,18 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 		nextDirectory = directory != null && directory.isDirectory() ? directory : null;
 		try {
 			// The first terminal is the plain view, the next ones are numbered copies of it.
-			String secondaryId = page.findViewReference(ID) == null ? null : "t" + System.currentTimeMillis(); //$NON-NLS-1$
+			String secondaryId = page.findViewReference(ID) == null ? null : nextSecondaryId();
 			page.showView(ID, secondaryId, IWorkbenchPage.VIEW_ACTIVATE);
 		} finally {
 			nextCommandLine = null;
 			nextDirectory = null;
 		}
+	}
+
+	/** A new id for each terminal, even when several are opened within the same millisecond. */
+	private static synchronized String nextSecondaryId() {
+		lastSecondaryId = Math.max(lastSecondaryId + 1, System.currentTimeMillis());
+		return "t" + lastSecondaryId; //$NON-NLS-1$
 	}
 
 	/**
@@ -527,6 +553,11 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 			if (busy != lastBusy) {
 				lastBusy = busy;
 				display.asyncExec(() -> {
+					if (browser.isDisposed()) {
+						return;
+					}
+					// A running command makes the view "dirty", so that closing it asks first.
+					firePropertyChange(IWorkbenchPartConstants.PROP_DIRTY);
 					if (busy) {
 						setActivity(Activity.RUNNING);
 					} else if (activity == Activity.RUNNING) {
@@ -543,6 +574,48 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 		} catch (RuntimeException e) {
 			// Keep polling: an exception would cancel the schedule.
 		}
+	}
+
+	/** @return {@code true} while a command runs in the foreground: closing the view would kill it */
+	@Override
+	public boolean isDirty() {
+		PtySession current = session;
+		return current != null && current.isBusy();
+	}
+
+	@Override
+	public boolean isSaveOnCloseNeeded() {
+		return true;
+	}
+
+	@Override
+	public int promptToSaveOnClose() {
+		if (!isDirty()) {
+			return NO;
+		}
+		return confirmClose() ? NO : CANCEL;
+	}
+
+	/** Asks the user whether to close the view and kill the command that runs in it. */
+	boolean confirmClose() {
+		return MessageDialog.openQuestion(getSite().getShell(), "Close Terminal", //$NON-NLS-1$
+				"A command is still running in '" + getPartName() //$NON-NLS-1$
+						+ "'. Closing the terminal will terminate it.\n\nClose anyway?"); //$NON-NLS-1$
+	}
+
+	@Override
+	public void doSave(IProgressMonitor monitor) {
+		// Nothing to save: the view is only "dirty" to confirm its closing.
+	}
+
+	@Override
+	public void doSaveAs() {
+		// Not allowed.
+	}
+
+	@Override
+	public boolean isSaveAsAllowed() {
+		return false;
 	}
 
 	/** The user has seen the mark: back to the icon that tells what the shell is doing. */
@@ -601,6 +674,96 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 			}
 		}
 		return path == null || path.isEmpty() ? null : new File(path);
+	}
+
+	/**
+	 * The files dropped on the terminal: the {@code file:} URLs of the drag data when the browser
+	 * gives them, otherwise the resources dragged from an Eclipse view such as the Project Explorer.
+	 *
+	 * @param uriList
+	 *            the {@code text/uri-list} of the drop, may be {@code null}
+	 */
+	static List<String> droppedPaths(String uriList) {
+		List<String> paths = new ArrayList<>();
+		if (uriList != null) {
+			for (String line : uriList.split("\\r?\\n")) { //$NON-NLS-1$
+				line = line.trim();
+				if (line.startsWith("file:")) { //$NON-NLS-1$
+					File file = parseFileUri(line);
+					if (file != null) {
+						paths.add(file.getPath());
+					}
+				}
+			}
+		}
+		if (paths.isEmpty() && LocalSelectionTransfer.getTransfer()
+				.getSelection() instanceof IStructuredSelection selection) {
+			for (Object element : selection) {
+				File file = fileOf(element);
+				if (file != null) {
+					paths.add(file.getPath());
+				}
+			}
+		}
+		return paths;
+	}
+
+	private static File parseFileUri(String uri) {
+		try {
+			// file:/C:/Users/me, file:///home/me, file://server/share
+			URI parsed = new URI(uri);
+			if (parsed.getAuthority() != null && !parsed.getAuthority().isEmpty()
+					&& !"localhost".equalsIgnoreCase(parsed.getAuthority())) { //$NON-NLS-1$
+				return new File("//" + parsed.getAuthority() + parsed.getPath()); //$NON-NLS-1$
+			}
+			String path = parsed.getPath();
+			if (path == null || path.isEmpty()) {
+				return null;
+			}
+			return new File(path.matches("/[A-Za-z]:.*") ? path.substring(1) : path); //$NON-NLS-1$
+		} catch (URISyntaxException e) {
+			return null;
+		}
+	}
+
+	private static File fileOf(Object element) {
+		if (element instanceof File file) {
+			return file;
+		}
+		try {
+			return WorkspaceLocations.file(element);
+		} catch (LinkageError e) {
+			// org.eclipse.core.resources is optional.
+			return null;
+		}
+	}
+
+	/**
+	 * The paths as the shell expects them on its command line: quoted when needed, separated and
+	 * followed by a space so that the user can go on typing.
+	 */
+	static String quotePaths(List<String> paths, String shellCommandLine) {
+		String shell = ShellProfiles.displayName(shellCommandLine == null ? "" : shellCommandLine).toLowerCase(); //$NON-NLS-1$
+		StringBuilder result = new StringBuilder();
+		for (String path : paths) {
+			result.append(quotePath(path, shell)).append(' ');
+		}
+		return result.toString();
+	}
+
+	private static String quotePath(String path, String shell) {
+		switch (shell) {
+		case "cmd": //$NON-NLS-1$
+			return path.matches("[^\\s&()\\[\\]{}^=;!'+,`~%]*") ? path : '"' + path + '"'; //$NON-NLS-1$
+		case "powershell", "pwsh": //$NON-NLS-1$ //$NON-NLS-2$
+			return path.matches("[\\w\\\\/:.\\-]*") ? path : "'" + path.replace("'", "''") + "'"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+		default:
+			// Git Bash and Cygwin understand C:/Users/me, not C:\Users\me.
+			if (IS_WINDOWS || path.matches("[A-Za-z]:\\\\.*")) { //$NON-NLS-1$
+				path = path.replace('\\', '/');
+			}
+			return path.matches("[\\w/:.,@%+=\\-]*") ? path : "'" + path.replace("'", "'\\''") + "'"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+		}
 	}
 
 	private void reveal() {
@@ -830,6 +993,12 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 				return null;
 			}
 			IPath location = resource.getProject().getLocation();
+			return location == null ? null : location.toFile();
+		}
+
+		static File file(Object element) {
+			IResource resource = Adapters.adapt(element, IResource.class);
+			IPath location = resource == null ? null : resource.getLocation();
 			return location == null ? null : location.toFile();
 		}
 
