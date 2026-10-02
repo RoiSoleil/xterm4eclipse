@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.UnaryOperator;
 
 /**
@@ -210,6 +211,17 @@ final class ShellProfiles {
 		}
 		String name = arguments[0].substring(Math.max(arguments[0].lastIndexOf('/'), arguments[0].lastIndexOf('\\')) + 1);
 		return name.toLowerCase().matches(".*\\.(exe|cmd|bat)") ? name.substring(0, name.length() - 4) : name; //$NON-NLS-1$
+	}
+
+	private static final Set<String> SHELLS = Set.of("bash", "zsh", "fish", "sh", "dash", "ksh", "mksh", "ash", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$ //$NON-NLS-8$
+			"csh", "tcsh", "nu", "xonsh", "elvish", "cmd", "powershell", "pwsh", "wsl"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$ //$NON-NLS-8$ //$NON-NLS-9$
+
+	/**
+	 * @return {@code true} if the command line starts an interactive shell, {@code false} if it runs a
+	 *         program of its own such as Claude Code (directly or through {@code shell -c})
+	 */
+	static boolean isShell(String commandLine) {
+		return SHELLS.contains(displayName(commandLine).toLowerCase());
 	}
 
 	/**

@@ -178,10 +178,11 @@
 					return false;
 				}
 			}
-			// Shift+Enter inserts a newline in Claude Code and similar TUIs (same as Alt+Enter).
+			// Shift+Enter inserts a newline in Claude Code and similar TUIs (same as Alt+Enter), and runs
+			// the command at the prompt of a shell: the Java side knows which program has the terminal.
 			if (e.key === 'Enter' && e.shiftKey && !e.ctrlKey && !e.altKey) {
 				if (down) {
-					javaInput('\x1b\r');
+					javaShiftEnter();
 				}
 				e.preventDefault();
 				return false;

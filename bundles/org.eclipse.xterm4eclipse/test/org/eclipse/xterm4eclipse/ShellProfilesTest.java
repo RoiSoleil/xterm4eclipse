@@ -40,6 +40,16 @@ class ShellProfilesTest {
 	}
 
 	@Test
+	void shellsAreToldApartFromPrograms() {
+		assertTrue(ShellProfiles.isShell("/bin/bash --norc"));
+		assertTrue(ShellProfiles.isShell("\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoLogo"));
+		assertTrue(ShellProfiles.isShell("C:\\Windows\\System32\\cmd.exe"));
+		assertFalse(ShellProfiles.isShell("/bin/zsh -l -i -c claude"));
+		assertFalse(ShellProfiles.isShell("\"C:\\Users\\me\\.local\\bin\\claude.exe\""));
+		assertFalse(ShellProfiles.isShell("htop"));
+	}
+
+	@Test
 	void displayNameIsTheExecutableName() {
 		assertEquals("zsh", ShellProfiles.displayName("/usr/bin/zsh -l"));
 		assertEquals("pwsh", ShellProfiles.displayName("\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\""));
