@@ -18,7 +18,7 @@ import javax.imageio.ImageIO;
  */
 public class MakeShellIcons {
 
-	private static final String[] NAMES = {"shell", "bash", "zsh", "fish", "powershell", "cmd", "gitbash", "linux"};
+	private static final String[] NAMES = {"shell", "bash", "zsh", "fish", "powershell", "cmd", "gitbash", "linux", "claude"};
 
 	public static void main(String[] args) throws Exception {
 		File directory = new File(args[0]);
@@ -57,6 +57,7 @@ public class MakeShellIcons {
 		case "cmd" -> label(g, 0x0c0c0c, 0xe5e5e5, "C:\\", 6.6);
 		case "gitbash" -> gitBash(g);
 		case "linux" -> penguin(g);
+		case "claude" -> claude(g);
 		default -> label(g, 0x555b61, 0xffffff, ">_", 9.5);
 		}
 		g.dispose();
@@ -103,6 +104,19 @@ public class MakeShellIcons {
 		g.draw(branch);
 		for (double[] node : new double[][] {{6.4, 4.6}, {6.4, 11.4}, {10, 6.2}}) {
 			g.fill(new Ellipse2D.Double(node[0] - 1.5, node[1] - 1.5, 3, 3));
+		}
+	}
+
+	/** A white starburst on the terracotta of Claude. */
+	private static void claude(Graphics2D g) {
+		box(g, 0xd97757);
+		g.setPaint(Color.WHITE);
+		g.setStroke(new BasicStroke(1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+		for (int i = 0; i < 8; i++) {
+			double angle = Math.PI * i / 4 + Math.PI / 8;
+			double length = i % 2 == 0 ? 5.2 : 4.2;
+			g.draw(new java.awt.geom.Line2D.Double(8 + Math.cos(angle) * 1.2, 8 + Math.sin(angle) * 1.2,
+					8 + Math.cos(angle) * length, 8 + Math.sin(angle) * length));
 		}
 	}
 

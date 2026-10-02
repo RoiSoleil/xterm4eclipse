@@ -28,6 +28,7 @@ final class ShellProfiles {
 				case "bash", "zsh", "fish", "cmd" -> displayName(commandLine).toLowerCase(); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 				case "pwsh", "powershell" -> "powershell"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 				case "wsl" -> "linux"; //$NON-NLS-1$ //$NON-NLS-2$
+				case "claude" -> "claude"; //$NON-NLS-1$ //$NON-NLS-2$
 				default -> "shell"; //$NON-NLS-1$
 				};
 			}
@@ -95,7 +96,50 @@ final class ShellProfiles {
 				}
 			}
 		}
+		addClaude(host, profiles);
 		return new ArrayList<>(profiles.values());
+	}
+
+	/**
+	 * Claude Code, when it is on the PATH: started through the login shell of the user on Unix so that
+	 * it finds the same environment (node, nvm...) as in a terminal, and the view closes when it ends.
+	 */
+	private static void addClaude(Host host, Map<String, Profile> profiles) {
+		if (host.isWindows()) {
+			File claude = findOnPath(host, "claude.exe", "claude.cmd"); //$NON-NLS-1$ //$NON-NLS-2$
+			if (claude != null) {
+				// A .cmd launcher, as installed by npm, needs cmd.exe to run.
+				profiles.put(CLAUDE, new Profile(CLAUDE, claude.getName().toLowerCase().endsWith(".cmd") //$NON-NLS-1$
+						? "cmd.exe /c " + quote(claude.getPath()) //$NON-NLS-1$
+						: quote(claude.getPath())));
+			}
+		} else if (findOnPath(host, "claude") != null) { //$NON-NLS-1$
+			String shell = host.env("SHELL"); //$NON-NLS-1$
+			if (shell == null || shell.isBlank()) {
+				shell = "/bin/bash"; //$NON-NLS-1$
+			}
+			profiles.put(CLAUDE, new Profile(CLAUDE, quote(shell) + " -l -i -c claude")); //$NON-NLS-1$
+		}
+	}
+
+	private static final String CLAUDE = "Claude"; //$NON-NLS-1$
+
+	private static File findOnPath(Host host, String... executables) {
+		for (String directory : pathEntries(host)) {
+			for (String executable : executables) {
+				File file = new File(directory, executable);
+				if (file.isFile()) {
+					return file;
+				}
+			}
+		}
+		return null;
+	}
+
+	private static List<String> pathEntries(Host host) {
+		String path = host.env("PATH"); //$NON-NLS-1$
+		// Not File.pathSeparator: the host may be a Windows machine simulated in a test.
+		return path == null ? List.of() : List.of(path.split(host.isWindows() ? ";" : ":")); //$NON-NLS-1$ //$NON-NLS-2$
 	}
 
 	/** The command line used for new terminals when no profile is chosen explicitly. */
@@ -153,8 +197,19 @@ final class ShellProfiles {
 		if (arguments.length == 0) {
 			return "Xterm"; //$NON-NLS-1$
 		}
+		// A shell running a single program, such as Claude Code, is named after the program.
+		for (int i = 1; i < arguments.length - 1; i++) {
+			if (arguments[i].equals("-c") || arguments[i].equalsIgnoreCase("/c")) { //$NON-NLS-1$ //$NON-NLS-2$
+				String program = arguments[i + 1].trim();
+				program = program.startsWith("'") ? program.substring(1, Math.max(1, program.indexOf('\'', 1))) //$NON-NLS-1$
+						: program.split("\\s+")[0]; //$NON-NLS-1$
+				if (!program.isEmpty()) {
+					return displayName('"' + program + '"');
+				}
+			}
+		}
 		String name = arguments[0].substring(Math.max(arguments[0].lastIndexOf('/'), arguments[0].lastIndexOf('\\')) + 1);
-		return name.toLowerCase().endsWith(".exe") ? name.substring(0, name.length() - 4) : name; //$NON-NLS-1$
+		return name.toLowerCase().matches(".*\\.(exe|cmd|bat)") ? name.substring(0, name.length() - 4) : name; //$NON-NLS-1$
 	}
 
 	/**
@@ -195,17 +250,9 @@ final class ShellProfiles {
 	}
 
 	private static void addIfOnPath(Host host, Map<String, Profile> profiles, String name, String executable) {
-		String path = host.env("PATH"); //$NON-NLS-1$
-		if (path == null) {
-			return;
-		}
-		// Not File.pathSeparator: the host may be a Windows machine simulated in a test.
-		for (String directory : path.split(host.isWindows() ? ";" : File.pathSeparator)) { //$NON-NLS-1$
-			File file = new File(directory, executable);
-			if (file.isFile()) {
-				profiles.putIfAbsent(name, new Profile(name, quote(file.getPath())));
-				return;
-			}
+		File file = findOnPath(host, executable);
+		if (file != null) {
+			profiles.putIfAbsent(name, new Profile(name, quote(file.getPath())));
 		}
 	}
 
