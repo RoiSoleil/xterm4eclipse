@@ -8,9 +8,11 @@ import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.Adapters;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.IDocument;
+import org.eclipse.ui.IEditorDescriptor;
 import org.eclipse.ui.IEditorPart;
 import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.PartInitException;
+import org.eclipse.ui.ide.FileStoreEditorInput;
 import org.eclipse.ui.ide.IDE;
 import org.eclipse.ui.texteditor.ITextEditor;
 
@@ -33,9 +35,10 @@ final class FileOpener {
 		IEditorPart editor;
 		IFile resource = workspaceFile(file);
 		if (resource != null) {
-			editor = IDE.openEditor(page, resource);
+			editor = IDE.openEditor(page, resource, editorId(IDE.getEditorDescriptor(resource, true, false)));
 		} else {
-			editor = IDE.openEditorOnFileStore(page, EFS.getLocalFileSystem().getStore(file.toURI()));
+			editor = page.openEditor(new FileStoreEditorInput(EFS.getLocalFileSystem().getStore(file.toURI())),
+					editorId(IDE.getEditorDescriptor(file.getName(), true, false)));
 		}
 		ITextEditor text = Adapters.adapt(editor, ITextEditor.class);
 		if (line <= 0 || text == null || text.getDocumentProvider() == null) {
@@ -54,6 +57,20 @@ final class FileOpener {
 			// The file changed since it was printed: the editor stays at the top.
 		}
 	}
+
+	/**
+	 * The editor of Eclipse for the file, or the text editor when the default one is a program of
+	 * the system: a path printed in the terminal must never start a program, as an {@code .exe}
+	 * associated with itself would.
+	 */
+	static String editorId(IEditorDescriptor descriptor) {
+		if (descriptor == null || descriptor.isOpenExternal() || descriptor.isOpenInPlace()) {
+			return TEXT_EDITOR;
+		}
+		return descriptor.getId();
+	}
+
+	static final String TEXT_EDITOR = "org.eclipse.ui.DefaultTextEditor"; //$NON-NLS-1$
 
 	/** The file as a workspace resource, so that the editor knows its project. */
 	private static IFile workspaceFile(File file) {

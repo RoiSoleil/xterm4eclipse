@@ -45,6 +45,7 @@ import org.eclipse.swt.SWT;
 import org.eclipse.swt.SWTException;
 import org.eclipse.swt.browser.Browser;
 import org.eclipse.swt.browser.BrowserFunction;
+import org.eclipse.swt.browser.LocationListener;
 import org.eclipse.swt.browser.ProgressListener;
 import org.eclipse.swt.dnd.Clipboard;
 import org.eclipse.swt.dnd.TextTransfer;
@@ -157,6 +158,8 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	private String commandLine;
 	/** Name given by the user, which the titles set by the programs no longer replace. */
 	private String customName;
+	/** The page of the terminal, the only one the browser may show. */
+	private File pageFile;
 	private long sessionStart;
 	/** The part that shows this terminal: the view itself, or the editor that embeds it. */
 	private IWorkbenchPart host = this;
@@ -302,6 +305,15 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		browser.setVisible(false);
 		display.timerExec(revealTimeoutMillis, this::reveal);
 		registerFunctions();
+		// The java* functions give the page the keyboard of the shell: no other page may ever be
+		// loaded in this browser, nor open a window of its own.
+		browser.addLocationListener(LocationListener.changingAdapter(event -> {
+			event.doit = isOwnPage(event.location);
+			if (!event.doit) {
+				XtermPlugin.log("Blocked a navigation of the terminal to " + event.location, null); //$NON-NLS-1$
+			}
+		}));
+		browser.addOpenWindowListener(event -> event.required = true);
 		// The java* functions only exist in the page once it is loaded, so the page waits for us.
 		browser.addProgressListener(
 				ProgressListener.completedAdapter(event -> browser.execute("xtermInit(" + config() + "," + replay() + ")"))); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
@@ -310,10 +322,11 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			Path page = WebPage.materialize(
 					XtermPlugin.stateDirectory().resolve("terminal-" + XtermPlugin.version() + ".html"), //$NON-NLS-1$ //$NON-NLS-2$
 					name -> XtermPlugin.resource("web/" + name)); //$NON-NLS-1$
+			pageFile = page.toFile().getAbsoluteFile();
 			browser.setUrl(page.toUri().toString());
 		} catch (IOException e) {
 			XtermPlugin.log("Could not load the xterm.js resources", e); //$NON-NLS-1$
-			browser.setText("<pre>Could not load the xterm.js resources: " + e + "</pre>"); //$NON-NLS-1$ //$NON-NLS-2$
+			browser.setText("<pre>Could not load the xterm.js resources: " + escapeHtml(e.toString()) + "</pre>"); //$NON-NLS-1$ //$NON-NLS-2$
 		}
 
 		createActions();
@@ -408,7 +421,10 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			return null;
 		});
 		function("javaOpenLink", args -> { //$NON-NLS-1$
-			Program.launch((String) args[0]);
+			String link = args.length > 0 && args[0] instanceof String text ? text : null;
+			if (isWebLink(link)) {
+				Program.launch(link);
+			}
 			return null;
 		});
 		function("javaResolveFiles", args -> { //$NON-NLS-1$
@@ -526,8 +542,9 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		} catch (PartInitException | RuntimeException e) {
 			XtermPlugin.log("Could not open " + file, e); //$NON-NLS-1$
 		} catch (LinkageError e) {
-			// No IDE bundles: the system decides how to open the file.
-			Program.launch(file.getPath());
+			// No IDE bundles: nothing to open the file with. It is never handed to the system, which
+			// could run it.
+			XtermPlugin.log("Cannot open " + file + " without the Eclipse IDE", e); //$NON-NLS-1$ //$NON-NLS-2$
 		}
 	}
 
@@ -540,6 +557,44 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		PtySession current = session;
 		boolean atPrompt = ShellProfiles.isShell(commandLine) && (current == null || !current.isBusy());
 		return atPrompt ? "\r" : "\u001b\r"; //$NON-NLS-1$ //$NON-NLS-2$
+	}
+
+	/**
+	 * @return {@code true} for the page of the terminal, or the empty page the browser starts with
+	 */
+	boolean isOwnPage(String location) {
+		if (location == null || location.equals("about:blank")) { //$NON-NLS-1$
+			return location != null;
+		}
+		try {
+			URI uri = new URI(location);
+			return pageFile != null && "file".equalsIgnoreCase(uri.getScheme()) && uri.getQuery() == null //$NON-NLS-1$
+					&& new File(uri.getPath()).getAbsoluteFile().equals(pageFile);
+		} catch (URISyntaxException | IllegalArgumentException e) {
+			return false;
+		}
+	}
+
+	/**
+	 * @return {@code true} for the http and https URLs that the web links of the terminal may open in
+	 *         the browser of the system; never a local file or a program
+	 */
+	static boolean isWebLink(String link) {
+		if (link == null) {
+			return false;
+		}
+		try {
+			URI uri = new URI(link);
+			String scheme = uri.getScheme();
+			return ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) //$NON-NLS-1$ //$NON-NLS-2$
+					&& uri.getHost() != null && !uri.getHost().isEmpty();
+		} catch (URISyntaxException e) {
+			return false;
+		}
+	}
+
+	static String escapeHtml(String text) {
+		return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
 	}
 
 	private interface JsFunction {

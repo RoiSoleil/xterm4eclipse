@@ -56,6 +56,10 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
   expression options.
 - Pasted, dropped and sent texts are typed as text: their control characters (escape sequences) are
   removed, so that a copied text cannot run a command by itself.
+- Security: the browser of the terminal can only show its own page; only http and https links are
+  opened, and a file path is always opened in an Eclipse editor (the text editor when its default
+  editor is a program of the system), never run. Shells and Claude Code are only looked up in the
+  absolute directories of the PATH.
 - Preferences in *Window > Preferences > Xterm Terminal*.
 
 # Build

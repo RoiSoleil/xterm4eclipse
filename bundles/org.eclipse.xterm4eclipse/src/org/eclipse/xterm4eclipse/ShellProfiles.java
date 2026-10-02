@@ -150,7 +150,24 @@ final class ShellProfiles {
 	private static List<String> pathEntries(Host host) {
 		String path = host.env("PATH"); //$NON-NLS-1$
 		// Not File.pathSeparator: the host may be a Windows machine simulated in a test.
-		return path == null ? List.of() : List.of(path.split(host.isWindows() ? ";" : ":")); //$NON-NLS-1$ //$NON-NLS-2$
+		List<String> entries = new ArrayList<>();
+		if (path != null) {
+			for (String entry : path.split(host.isWindows() ? ";" : ":")) { //$NON-NLS-1$ //$NON-NLS-2$
+				// An empty or relative entry is the current directory of Eclipse, where anybody could
+				// have left a program of the same name: the shells are only looked up in fixed places.
+				if (isAbsolute(host, entry)) {
+					entries.add(entry);
+				}
+			}
+		}
+		return entries;
+	}
+
+	static boolean isAbsolute(Host host, String directory) {
+		if (host.isWindows()) {
+			return directory.matches("[A-Za-z]:[\\\\/].*|[\\\\/].*"); //$NON-NLS-1$
+		}
+		return directory.startsWith("/"); //$NON-NLS-1$
 	}
 
 	/** The command line used for new terminals when no profile is chosen explicitly. */
@@ -240,17 +257,14 @@ final class ShellProfiles {
 	 */
 	private static void addGitBash(Host host, Map<String, Profile> profiles) {
 		List<File> roots = new ArrayList<>();
-		String path = host.env("PATH"); //$NON-NLS-1$
-		if (path != null) {
-			for (String directory : path.split(";")) { //$NON-NLS-1$
-				if (new File(directory, "git.exe").isFile()) { //$NON-NLS-1$
-					// The PATH holds Git\cmd, Git\bin or Git\mingw64\bin.
-					File parent = new File(directory).getAbsoluteFile().getParentFile();
-					if (parent != null) {
-						roots.add(parent);
-						if (parent.getParentFile() != null) {
-							roots.add(parent.getParentFile());
-						}
+		for (String directory : pathEntries(host)) {
+			if (new File(directory, "git.exe").isFile()) { //$NON-NLS-1$
+				// The PATH holds Git\cmd, Git\bin or Git\mingw64\bin.
+				File parent = new File(directory).getAbsoluteFile().getParentFile();
+				if (parent != null) {
+					roots.add(parent);
+					if (parent.getParentFile() != null) {
+						roots.add(parent.getParentFile());
 					}
 				}
 			}
