@@ -76,8 +76,38 @@
 			}
 		}
 
+		// The Eclipse shortcuts the user keeps in the terminal, named as in the Keys preference page.
+		var shortcuts = cfg.shortcuts || [];
+		var KEY_NAMES = {
+			PageUp: 'PAGE_UP', PageDown: 'PAGE_DOWN', ArrowUp: 'ARROW_UP', ArrowDown: 'ARROW_DOWN',
+			ArrowLeft: 'ARROW_LEFT', ArrowRight: 'ARROW_RIGHT', Home: 'HOME', End: 'END', Insert: 'INSERT',
+			Delete: 'DEL', Backspace: 'BS', Tab: 'TAB', Escape: 'ESC', Enter: 'CR', Space: 'SPACE'
+		};
+		function strokeName(e) {
+			var code = e.code || '';
+			var key;
+			if (/^Key[A-Z]$/.test(code)) {
+				key = code.substring(3);
+			} else if (/^Digit[0-9]$/.test(code)) {
+				key = code.substring(5);
+			} else if (/^F[0-9]+$/.test(code)) {
+				key = code;
+			} else {
+				key = KEY_NAMES[code] || KEY_NAMES[e.key];
+			}
+			return key && (e.altKey ? 'ALT+' : '') + (e.metaKey ? 'COMMAND+' : '') + (e.ctrlKey ? 'CTRL+' : '')
+				+ (e.shiftKey ? 'SHIFT+' : '') + key;
+		}
+
 		term.attachCustomKeyEventHandler(function (e) {
 			var down = e.type === 'keydown';
+			if (down && shortcuts.length) {
+				var stroke = strokeName(e);
+				if (stroke && shortcuts.indexOf(stroke) >= 0 && javaShortcut(stroke)) {
+					e.preventDefault();
+					return false;
+				}
+			}
 			// Shift+Enter inserts a newline in Claude Code and similar TUIs (same as Alt+Enter).
 			if (e.key === 'Enter' && e.shiftKey && !e.ctrlKey && !e.altKey) {
 				if (down) {
@@ -242,6 +272,7 @@
 			term.options.theme = themeOf(config);
 			term.options.fontFamily = config.fontFamily;
 			term.options.fontSize = config.fontSize;
+			shortcuts = config.shortcuts || [];
 			doFit();
 		};
 		window.xtermTheme = function () { return term.options.theme; };

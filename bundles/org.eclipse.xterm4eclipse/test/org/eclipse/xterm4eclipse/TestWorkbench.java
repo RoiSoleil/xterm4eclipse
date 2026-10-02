@@ -19,6 +19,7 @@ import org.eclipse.ui.IWorkbench;
 import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.IWorkbenchPartReference;
 import org.eclipse.ui.IWorkbenchWindow;
+import org.eclipse.ui.handlers.IHandlerService;
 import org.eclipse.ui.keys.IBindingService;
 import org.eclipse.ui.progress.IWorkbenchSiteProgressService;
 import org.eclipse.ui.themes.IThemeManager;
@@ -33,6 +34,7 @@ final class TestWorkbench {
 
 	final Fake page = new Fake();
 	final Fake bindings = new Fake();
+	final Fake handlers = new Fake();
 	final Fake progress = new Fake();
 	final Fake workbench = new Fake();
 	final ToolBarManager toolBar = new ToolBarManager();
@@ -51,7 +53,8 @@ final class TestWorkbench {
 		page.on("getActivePart", args -> activePart);
 		workbench.on("isClosing", args -> closing);
 		workbench.on("getSharedImages", args -> new Fake().as(ISharedImages.class));
-		workbench.on("getService", args -> args[0] == IBindingService.class ? bindings.as(IBindingService.class) : null);
+		workbench.on("getService", args -> args[0] == IBindingService.class ? bindings.as(IBindingService.class)
+				: args[0] == IHandlerService.class ? handlers.as(IHandlerService.class) : null);
 		workbench.on("getThemeManager",
 				args -> new Fake().on("addPropertyChangeListener", a -> themeListeners.add((IPropertyChangeListener) a[0]))
 						.on("removePropertyChangeListener", a -> themeListeners.remove(a[0])).as(IThemeManager.class));

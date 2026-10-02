@@ -33,6 +33,9 @@ final class XtermPlugin {
 	/** Whether the screen content is shown again after a restart of Eclipse. */
 	static final String PREF_RESTORE_HISTORY = "restoreHistory"; //$NON-NLS-1$
 
+	/** Key strokes that run their Eclipse command instead of going to the shell. */
+	static final String PREF_ECLIPSE_SHORTCUTS = "eclipseShortcuts"; //$NON-NLS-1$
+
 	private static final Bundle BUNDLE = FrameworkUtil.getBundle(XtermPlugin.class);
 	private static IPreferenceStore preferences;
 	private static final Map<String, Image> IMAGES = new HashMap<>();
@@ -60,6 +63,7 @@ final class XtermPlugin {
 			preferences.setDefault(PREF_DEFAULT_SHELL, ""); //$NON-NLS-1$
 			preferences.setDefault(PREF_FOCUS_ON_FINISH, false);
 			preferences.setDefault(PREF_RESTORE_HISTORY, true);
+			preferences.setDefault(PREF_ECLIPSE_SHORTCUTS, EclipseShortcuts.DEFAULTS);
 		}
 		return preferences;
 	}
