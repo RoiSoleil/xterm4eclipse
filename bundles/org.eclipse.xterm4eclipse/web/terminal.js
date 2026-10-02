@@ -159,10 +159,22 @@
 			return !!selection;
 		}
 
+		// Pasted, dropped or sent text goes to the shell as typed text, never as terminal sequences: a
+		// text copied from a web page could otherwise end the bracketed paste (ESC [201~) and run
+		// what follows it, or send other escape sequences to the program. Only tab and line breaks
+		// are kept of the control characters.
+		function sanitize(text) {
+			return text.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, '');
+		}
+		function safePaste(text) {
+			term.paste(sanitize(text));
+		}
+		window.xtermSanitize = sanitize;
+
 		function paste() {
 			var text = javaPaste();
 			if (text) {
-				term.paste(text);
+				safePaste(text);
 			}
 		}
 
@@ -398,7 +410,7 @@
 			}
 			var dropped = javaDrop(uris, text);
 			if (dropped) {
-				term.paste(dropped);
+				safePaste(dropped);
 			}
 			term.focus();
 		}, true);
@@ -506,7 +518,7 @@
 			for (var i = 0; i < binary.length; i++) {
 				bytes[i] = binary.charCodeAt(i);
 			}
-			term.paste(new TextDecoder('utf-8').decode(bytes));
+			safePaste(new TextDecoder('utf-8').decode(bytes));
 			javaInput('\r');
 		};
 
