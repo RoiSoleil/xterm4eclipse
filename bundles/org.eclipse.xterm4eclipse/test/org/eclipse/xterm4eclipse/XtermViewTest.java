@@ -34,6 +34,7 @@ import org.eclipse.core.resources.IResource;
 import org.eclipse.jface.action.ActionContributionItem;
 import org.eclipse.jface.action.IAction;
 import org.eclipse.jface.action.IMenuCreator;
+import org.eclipse.jface.text.TextSelection;
 import org.eclipse.jface.bindings.Binding;
 import org.eclipse.jface.bindings.keys.KeyBinding;
 import org.eclipse.jface.bindings.keys.KeySequence;
@@ -54,7 +55,10 @@ import org.eclipse.swt.widgets.Event;
 import org.eclipse.swt.widgets.Menu;
 import org.eclipse.swt.widgets.MenuItem;
 import org.eclipse.swt.widgets.Shell;
+import org.eclipse.ui.IEditorInput;
+import org.eclipse.ui.IEditorPart;
 import org.eclipse.ui.ISelectionService;
+import org.eclipse.ui.IURIEditorInput;
 import org.eclipse.ui.ISources;
 import org.eclipse.ui.IViewReference;
 import org.eclipse.ui.IWorkbenchPage;
@@ -175,6 +179,70 @@ class XtermViewTest {
 		workbench.selection = new StructuredSelection(new Fake().on("getProject", args -> project).as(IResource.class));
 		XtermView view = open();
 		run(view, "echo in=$PWD", "in=/usr/share");
+	}
+
+	@Test
+	void shellStartsInTheProjectOfTheActiveEditor() throws Exception {
+		IProject project = new Fake().on("getLocation", args -> org.eclipse.core.runtime.Path.fromOSString("/usr/share"))
+				.as(IProject.class);
+		IResource file = new Fake().on("getProject", args -> project).as(IResource.class);
+		IEditorInput input = new Fake().on("getAdapter", args -> args[0] == IResource.class ? file : null)
+				.as(IEditorInput.class);
+		workbench.page.on("getActiveEditor", args -> new Fake().on("getEditorInput", a -> input).as(IEditorPart.class));
+		// The selection of an editor is its text, not a resource.
+		workbench.selection = new TextSelection(0, 0);
+		XtermView view = open();
+		run(view, "echo in=$PWD", "in=/usr/share");
+	}
+
+	@Test
+	void shellStartsInTheFolderOfAnEditedFileOutsideOfTheWorkspace() throws Exception {
+		IURIEditorInput input = new Fake().on("getURI", args -> new File("/usr/lib/no-such-file.txt").toURI())
+				.as(IURIEditorInput.class);
+		workbench.page.on("getActiveEditor", args -> new Fake().on("getEditorInput", a -> input).as(IEditorPart.class));
+		XtermView view = open();
+		run(view, "echo in=$PWD", "in=/usr/lib");
+
+		assertEquals(new File("/usr/lib"), XtermView.directoryOf(input));
+		assertNull(XtermView.directoryOf(new Fake().on("getURI", args -> java.net.URI.create("http://example.org/a.txt"))
+				.as(IURIEditorInput.class)));
+		assertNull(XtermView.directoryOf(new Fake().on("getURI", args -> java.net.URI.create("file://server/a.txt"))
+				.as(IURIEditorInput.class)));
+		assertNull(XtermView.directoryOf(new Fake().as(IURIEditorInput.class)));
+	}
+
+	@Test
+	void showInXtermFromAnEditorOpensTheFolderOfItsFile() throws Exception {
+		List<XtermView> opened = new ArrayList<>();
+		workbench.page.on("showView", args -> {
+			try {
+				XtermView view = new XtermView();
+				workbench.open(view, (String) args[1], null);
+				opened.add(view);
+			} catch (Exception e) {
+				throw new AssertionError(e);
+			}
+			return null;
+		});
+		IURIEditorInput input = new Fake().on("getURI", args -> new File("/usr/share/file.txt").toURI())
+				.as(IURIEditorInput.class);
+		IEvaluationContext state = new Fake().on("getVariable", args -> ISources.ACTIVE_MENU_SELECTION_NAME.equals(args[0])
+				? new TextSelection(0, 0)
+				: ISources.ACTIVE_EDITOR_INPUT_NAME.equals(args[0]) ? input : null).as(IEvaluationContext.class);
+		IEvaluationService evaluation = new Fake().on("getCurrentState", args -> state).as(IEvaluationService.class);
+		IWorkbenchWindow window = new Fake().on("getActivePage", args -> workbench.page.as(IWorkbenchPage.class)).as(IWorkbenchWindow.class);
+		ShowInXtermMenu contribution = new ShowInXtermMenu();
+		contribution.initialize(new Fake()
+				.on("getService", args -> args[0] == IEvaluationService.class ? evaluation : window)
+				.as(IServiceLocator.class));
+		Menu menu = new Menu(new Shell(TestWorkbench.DISPLAY));
+		contribution.fill(menu, 0);
+		int bash = ShellProfiles.detect().stream().map(ShellProfiles.Profile::name).toList().indexOf("bash");
+		menu.getItem(bash).notifyListeners(SWT.Selection, new Event());
+		assertEquals(1, opened.size());
+		await("shell prompt", () -> screen(opened.get(0)).contains("$"));
+		run(opened.get(0), "echo editor-in=$PWD", "editor-in=/usr/share");
+		menu.getShell().dispose();
 	}
 
 	@Test

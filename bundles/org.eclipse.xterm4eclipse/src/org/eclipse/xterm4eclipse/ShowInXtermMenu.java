@@ -54,7 +54,8 @@ public class ShowInXtermMenu extends CompoundContributionItem implements IWorkbe
 	}
 
 	/**
-	 * @return the directory of the element the context menu was opened on, or {@code null}
+	 * @return the directory of the element the context menu was opened on, or of the file of the
+	 *         editor whose context menu it is, or {@code null}
 	 */
 	private File selectedDirectory() {
 		if (services == null) {
@@ -74,9 +75,14 @@ public class ShowInXtermMenu extends CompoundContributionItem implements IWorkbe
 				&& workbenchWindow.getSelectionService() != null) {
 			selection = workbenchWindow.getSelectionService().getSelection();
 		}
-		return selection instanceof IStructuredSelection structured && !structured.isEmpty()
-				? XtermView.directoryOf(structured.getFirstElement())
-				: null;
+		if (selection instanceof IStructuredSelection structured && !structured.isEmpty()) {
+			return XtermView.directoryOf(structured.getFirstElement());
+		}
+		// The context menu of an editor: the folder of its file.
+		if (evaluation instanceof IEvaluationService service && service.getCurrentState() != null) {
+			return XtermView.directoryOf(service.getCurrentState().getVariable(ISources.ACTIVE_EDITOR_INPUT_NAME));
+		}
+		return null;
 	}
 
 	private void show(ShellProfiles.Profile profile, File directory) {

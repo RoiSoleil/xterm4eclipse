@@ -105,6 +105,24 @@
             <visibleWhen checkEnabled="true"/>
          </command>
       </menuContribution>
+      <menuContribution locationURI="popup:#AbstractTextEditorContext?after=additions">
+         <menu
+               id="org.eclipse.xterm4eclipse.showInFromEditor"
+               label="Show in Xterm"
+               icon="icons/xterm.png">
+            <dynamic
+                  id="org.eclipse.xterm4eclipse.showInFromEditor.shells"
+                  class="org.eclipse.xterm4eclipse.ShowInXtermMenu"/>
+            <visibleWhen checkEnabled="false">
+               <with variable="activeEditorInput">
+                  <or>
+                     <adapt type="org.eclipse.core.resources.IResource"/>
+                     <instanceof value="org.eclipse.ui.IURIEditorInput"/>
+                  </or>
+               </with>
+            </visibleWhen>
+         </menu>
+      </menuContribution>
       <menuContribution locationURI="toolbar:org.eclipse.ui.main.toolbar?after=additions">
          <toolbar id="org.eclipse.xterm4eclipse.toolbar">
             <command
