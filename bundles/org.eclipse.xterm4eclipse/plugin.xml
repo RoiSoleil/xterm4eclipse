@@ -12,6 +12,18 @@
             allowMultiple="true"
             restorable="true"/>
    </extension>
+   <extension point="org.eclipse.ui.editors">
+      <editor
+            id="org.eclipse.xterm4eclipse.editor"
+            name="Xterm"
+            icon="icons/xterm.png"
+            class="org.eclipse.xterm4eclipse.XtermEditor"/>
+   </extension>
+   <extension point="org.eclipse.ui.elementFactories">
+      <factory
+            id="org.eclipse.xterm4eclipse.editorInputFactory"
+            class="org.eclipse.xterm4eclipse.XtermEditorInputFactory"/>
+   </extension>
    <extension point="org.eclipse.ui.perspectiveExtensions">
       <perspectiveExtension targetID="*">
          <viewShortcut id="org.eclipse.xterm4eclipse.view"/>

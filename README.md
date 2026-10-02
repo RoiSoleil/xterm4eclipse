@@ -43,6 +43,9 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
   a URL opens it in the browser.
 - *Rename…* in the view menu gives the terminal a fixed name, kept after a restart (the titles set by
   programs then only go to the tool tip; an empty name brings them back).
+- *Move to the Editor Area* / *Move to the Terminal View* (tool bar): a terminal moves between the
+  view and the editor area with its running shell and its screen, full screen programs such as
+  Claude Code or vim included. Terminals of the editor area also come back after a restart.
 - Preferences in *Window > Preferences > Xterm Terminal*.
 
 # Build
