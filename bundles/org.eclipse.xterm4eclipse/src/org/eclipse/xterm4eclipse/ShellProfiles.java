@@ -17,6 +17,22 @@ final class ShellProfiles {
 
 	/** A named shell command line, for example {@code zsh} / {@code /usr/bin/zsh}. */
 	record Profile(String name, String commandLine) {
+
+		/** The icon shown in front of the shell in the menus, as a resource of the plug-in. */
+		String icon() {
+			String kind;
+			if (name.equals("Git Bash")) { //$NON-NLS-1$
+				kind = "gitbash"; //$NON-NLS-1$
+			} else {
+				kind = switch (displayName(commandLine).toLowerCase()) {
+				case "bash", "zsh", "fish", "cmd" -> displayName(commandLine).toLowerCase(); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+				case "pwsh", "powershell" -> "powershell"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+				case "wsl" -> "linux"; //$NON-NLS-1$ //$NON-NLS-2$
+				default -> "shell"; //$NON-NLS-1$
+				};
+			}
+			return "icons/shells/" + kind + ".png"; //$NON-NLS-1$ //$NON-NLS-2$
+		}
 	}
 
 	/** The machine the shells are looked up on; a parameter so that every platform can be tested. */
@@ -52,19 +68,7 @@ final class ShellProfiles {
 			addIfOnPath(host, profiles, "PowerShell", "pwsh.exe"); //$NON-NLS-1$ //$NON-NLS-2$
 			addIfOnPath(host, profiles, "Windows PowerShell", "powershell.exe"); //$NON-NLS-1$ //$NON-NLS-2$
 			addIfOnPath(host, profiles, "Command Prompt", "cmd.exe"); //$NON-NLS-1$ //$NON-NLS-2$
-			for (String root : new String[] {host.env("ProgramFiles"), host.env("ProgramFiles(x86)"), //$NON-NLS-1$ //$NON-NLS-2$
-					host.env("LocalAppData")}) { //$NON-NLS-1$
-				if (root == null) {
-					continue;
-				}
-				for (String folder : new String[] {"Git", "Programs/Git"}) { //$NON-NLS-1$ //$NON-NLS-2$
-					File gitBash = new File(new File(root, folder), "bin/bash.exe"); //$NON-NLS-1$
-					if (gitBash.isFile()) {
-						profiles.putIfAbsent("Git Bash", //$NON-NLS-1$
-								new Profile("Git Bash", quote(gitBash.getPath()) + " --login -i")); //$NON-NLS-1$ //$NON-NLS-2$
-					}
-				}
-			}
+			addGitBash(host, profiles);
 			addIfOnPath(host, profiles, "WSL", "wsl.exe"); //$NON-NLS-1$ //$NON-NLS-2$
 		} else {
 			List<String> candidates = new ArrayList<>();
@@ -151,6 +155,43 @@ final class ShellProfiles {
 		}
 		String name = arguments[0].substring(Math.max(arguments[0].lastIndexOf('/'), arguments[0].lastIndexOf('\\')) + 1);
 		return name.toLowerCase().endsWith(".exe") ? name.substring(0, name.length() - 4) : name; //$NON-NLS-1$
+	}
+
+	/**
+	 * Git for Windows is found through the {@code git.exe} of the PATH, whatever the installation
+	 * directory, then in the usual installation directories.
+	 */
+	private static void addGitBash(Host host, Map<String, Profile> profiles) {
+		List<File> roots = new ArrayList<>();
+		String path = host.env("PATH"); //$NON-NLS-1$
+		if (path != null) {
+			for (String directory : path.split(";")) { //$NON-NLS-1$
+				if (new File(directory, "git.exe").isFile()) { //$NON-NLS-1$
+					// The PATH holds Git\cmd, Git\bin or Git\mingw64\bin.
+					File parent = new File(directory).getAbsoluteFile().getParentFile();
+					if (parent != null) {
+						roots.add(parent);
+						if (parent.getParentFile() != null) {
+							roots.add(parent.getParentFile());
+						}
+					}
+				}
+			}
+		}
+		for (String variable : new String[] {"ProgramFiles", "ProgramW6432", "ProgramFiles(x86)", "LocalAppData"}) { //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+			String root = host.env(variable);
+			if (root != null) {
+				roots.add(new File(root, "Git")); //$NON-NLS-1$
+				roots.add(new File(root, "Programs/Git")); //$NON-NLS-1$
+			}
+		}
+		for (File root : roots) {
+			File bash = new File(root, "bin/bash.exe"); //$NON-NLS-1$
+			if (bash.isFile()) {
+				profiles.putIfAbsent("Git Bash", new Profile("Git Bash", quote(bash.getPath()) + " --login -i")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+				return;
+			}
+		}
 	}
 
 	private static void addIfOnPath(Host host, Map<String, Profile> profiles, String name, String executable) {

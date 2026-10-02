@@ -103,6 +103,51 @@ class ShellProfilesTest {
 	}
 
 	@Test
+	void gitBashIsFoundNextToTheGitOfThePathWhereverItIsInstalled() throws Exception {
+		for (String onPath : new String[] {"cmd", "bin", "mingw64/bin"}) {
+			Path root = temp.resolve("custom " + onPath.replace('/', '-') + "/Git");
+			Files.createFile(Files.createDirectories(root.resolve("bin")).resolve("bash.exe"));
+			Path pathEntry = Files.createDirectories(root.resolve(onPath));
+			Files.createFile(pathEntry.resolve("git.exe"));
+
+			List<ShellProfiles.Profile> profiles = ShellProfiles
+					.detect(host("Windows 11", Map.of("PATH", temp.resolve("other") + ";" + pathEntry), null));
+
+			assertEquals(List.of("Git Bash"), profiles.stream().map(ShellProfiles.Profile::name).toList(), onPath);
+			assertEquals(root.resolve("bin").resolve("bash.exe").toFile(),
+					new File(ShellProfiles.parse(profiles.get(0).commandLine())[0]));
+		}
+	}
+
+	@Test
+	void gitWithoutBashIsNotOffered() throws Exception {
+		Path cmd = Files.createDirectories(temp.resolve("Git/cmd"));
+		Files.createFile(cmd.resolve("git.exe"));
+		assertTrue(ShellProfiles.detect(host("Windows 11", Map.of("PATH", cmd.toString()), null)).isEmpty());
+	}
+
+	@Test
+	void everyShellHasAnIconThatExists() throws Exception {
+		Map<String, String> expected = new HashMap<>();
+		expected.put("/usr/bin/bash", "bash");
+		expected.put("/bin/zsh -l", "zsh");
+		expected.put("/usr/bin/fish", "fish");
+		expected.put("\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\"", "powershell");
+		expected.put("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", "powershell");
+		expected.put("C:\\Windows\\System32\\cmd.exe", "cmd");
+		expected.put("C:\\Windows\\System32\\wsl.exe", "linux");
+		expected.put("/bin/dash", "shell");
+		for (Map.Entry<String, String> entry : expected.entrySet()) {
+			String icon = new ShellProfiles.Profile("any", entry.getKey()).icon();
+			assertEquals("icons/shells/" + entry.getValue() + ".png", icon);
+			assertTrue(XtermPlugin.class.getResource("/" + icon) != null, icon);
+		}
+		String gitBash = new ShellProfiles.Profile("Git Bash", "C:\\Git\\bin\\bash.exe --login -i").icon();
+		assertEquals("icons/shells/gitbash.png", gitBash);
+		assertTrue(XtermPlugin.class.getResource("/" + gitBash) != null);
+	}
+
+	@Test
 	void windowsWithoutPathFindsNothing() {
 		assertTrue(ShellProfiles.detect(host("Windows 11", Map.of(), null)).isEmpty());
 	}

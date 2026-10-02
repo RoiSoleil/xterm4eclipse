@@ -3,6 +3,7 @@ on:
    push:
       branches:
       - main
+   pull_request:
 permissions:
    contents: write
 jobs:
@@ -69,6 +70,7 @@ jobs:
       -  name: Build
          run: mvn -B clean install
       -  name: Release
+         if: github.event_name == 'push'
          env:
             GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
          run: |
@@ -77,6 +79,7 @@ jobs:
                --notes "Latest build of the main branch." \
                update-site/org.eclipse.xterm4eclipse/target/org.eclipse.xterm4eclipse.updatesite-*-SNAPSHOT.zip
       -  name: Publish p2 update site
+         if: github.event_name == 'push'
          env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
          run: |

@@ -22,11 +22,14 @@ import java.util.Map;
 
 import org.eclipse.core.commands.ExecutionEvent;
 import org.eclipse.core.expressions.EvaluationContext;
+import org.eclipse.core.resources.IContainer;
+import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.jface.action.ActionContributionItem;
 import org.eclipse.jface.action.IAction;
 import org.eclipse.jface.action.IMenuCreator;
+import org.eclipse.jface.viewers.ISelection;
 import org.eclipse.jface.viewers.StructuredSelection;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.dnd.Clipboard;
@@ -39,6 +42,7 @@ import org.eclipse.swt.widgets.Event;
 import org.eclipse.swt.widgets.Menu;
 import org.eclipse.swt.widgets.MenuItem;
 import org.eclipse.swt.widgets.Shell;
+import org.eclipse.ui.ISelectionService;
 import org.eclipse.ui.ISources;
 import org.eclipse.ui.IViewReference;
 import org.eclipse.ui.IWorkbenchPage;
@@ -46,6 +50,7 @@ import org.eclipse.ui.IWorkbenchPartConstants;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.PartInitException;
 import org.eclipse.ui.XMLMemento;
+import org.eclipse.ui.services.IServiceLocator;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -467,6 +472,7 @@ class XtermViewTest {
 		Menu menu = creator.getMenu(workbench.shells.get(0));
 		assertEquals(profiles.size() + 2, menu.getItemCount());
 		assertEquals(first.name(), menu.getItem(0).getText());
+		assertSame(XtermPlugin.image(first.icon()), menu.getItem(0).getImage());
 		menu.getItem(0).notifyListeners(SWT.Selection, new Event());
 		assertEquals(1, opened.size());
 		assertEquals(ShellProfiles.displayName(first.commandLine()), opened.get(0).getPartName());
@@ -539,6 +545,66 @@ class XtermViewTest {
 		context.addVariable(ISources.ACTIVE_WORKBENCH_WINDOW_NAME, empty);
 		assertNull(handler.execute(event));
 		assertEquals(2, shown.size());
+	}
+
+	@Test
+	void showInXtermOpensEachShellInTheDirectoryOfTheSelection() throws Exception {
+		List<XtermView> opened = new ArrayList<>();
+		workbench.page.on("showView", args -> {
+			try {
+				XtermView view = new XtermView();
+				workbench.open(view, (String) args[1], null);
+				opened.add(view);
+			} catch (Exception e) {
+				throw new AssertionError(e);
+			}
+			return null;
+		});
+		// A file is selected: the terminal opens in the folder that holds it.
+		IContainer folder = new Fake().on("getLocation", args -> org.eclipse.core.runtime.Path.fromOSString("/usr/lib"))
+				.as(IContainer.class);
+		IFile file = new Fake().on("getParent", args -> folder).as(IFile.class);
+		ISelection[] selection = {new StructuredSelection(file)};
+		IWorkbenchWindow window = new Fake().on("getActivePage", args -> workbench.page.as(IWorkbenchPage.class))
+				.on("getSelectionService",
+						args -> new Fake().on("getSelection", a -> selection[0]).as(ISelectionService.class))
+				.as(IWorkbenchWindow.class);
+		ShowInXtermMenu contribution = new ShowInXtermMenu();
+		contribution.initialize(new Fake().on("getService", args -> window).as(IServiceLocator.class));
+
+		Menu menu = new Menu(workbench.shells.isEmpty() ? new Shell(TestWorkbench.DISPLAY) : workbench.shells.get(0));
+		contribution.fill(menu, 0);
+		List<ShellProfiles.Profile> profiles = ShellProfiles.detect();
+		assertEquals(profiles.stream().map(ShellProfiles.Profile::name).toList(),
+				List.of(menu.getItems()).stream().map(MenuItem::getText).toList());
+
+		int bash = profiles.stream().map(ShellProfiles.Profile::name).toList().indexOf("bash");
+		assertSame(XtermPlugin.image("icons/shells/bash.png"), menu.getItem(bash).getImage(), "icon of the shell");
+		menu.getItem(bash).notifyListeners(SWT.Selection, new Event());
+		assertEquals(1, opened.size());
+		assertEquals("bash", opened.get(0).getPartName());
+		await("shell prompt", () -> screen(opened.get(0)).contains("$"));
+		run(opened.get(0), "echo in=$PWD", "in=/usr/lib");
+
+		// A folder is selected: the terminal opens in it.
+		selection[0] = new StructuredSelection(folder);
+		assertEquals(new File("/usr/lib"), XtermView.directoryOf(folder));
+		assertNull(XtermView.directoryOf("not a resource"));
+		assertNull(XtermView.directoryOf(new Fake().on("getParent", args -> new Fake().as(IContainer.class)).as(IFile.class)));
+
+		// Nothing usable selected, or no page: no directory is forced, nothing breaks.
+		selection[0] = new StructuredSelection();
+		menu.getItem(bash).notifyListeners(SWT.Selection, new Event());
+		assertEquals(2, opened.size());
+		workbench.page.on("showView", args -> {
+			throw new IllegalStateException(new PartInitException("no more views"));
+		});
+		assertThrows(IllegalStateException.class, () -> XtermView.open(workbench.page.as(IWorkbenchPage.class), SHELL));
+		ShowInXtermMenu detached = new ShowInXtermMenu();
+		detached.initialize(new Fake().as(IServiceLocator.class));
+		detached.fill(menu, 0);
+		menu.getItem(0).notifyListeners(SWT.Selection, new Event());
+		menu.dispose();
 	}
 
 	@Test
