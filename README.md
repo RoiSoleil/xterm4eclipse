@@ -30,6 +30,10 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
 - `exit` closes the view.
 - Shift+Enter inserts a newline in Claude Code. Copy/paste: Ctrl+Shift+C / Ctrl+Shift+V,
   Shift+Insert, right click; Cmd+C / Cmd+V on macOS; Ctrl+C (with a selection) / Ctrl+V on Windows.
+- The keys go to the shell, except a few Eclipse shortcuts that keep working in the terminal (Quick
+  Access Ctrl+3, Open Resource / Type Ctrl+Shift+R / T, next view / editor / perspective
+  Ctrl+F6 / F7 / F8, Ctrl+PageUp / PageDown, new terminal Ctrl+Alt+Shift+X): the list can be changed
+  in the preferences.
 - Preferences in *Window > Preferences > Xterm Terminal*.
 
 # Build

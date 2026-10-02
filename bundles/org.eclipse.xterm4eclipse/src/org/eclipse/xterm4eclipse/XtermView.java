@@ -15,6 +15,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import org.eclipse.core.commands.ExecutionException;
+import org.eclipse.core.commands.ParameterizedCommand;
+import org.eclipse.core.commands.common.CommandException;
 import org.eclipse.core.resources.IContainer;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.Adapters;
@@ -24,6 +27,8 @@ import org.eclipse.jface.action.Action;
 import org.eclipse.jface.action.IAction;
 import org.eclipse.jface.action.IMenuCreator;
 import org.eclipse.jface.action.IToolBarManager;
+import org.eclipse.jface.bindings.Binding;
+import org.eclipse.jface.bindings.keys.KeySequence;
 import org.eclipse.jface.util.IPropertyChangeListener;
 import org.eclipse.jface.util.LocalSelectionTransfer;
 import org.eclipse.jface.dialogs.InputDialog;
@@ -60,6 +65,7 @@ import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.IWorkbenchPartConstants;
 import org.eclipse.ui.IWorkbenchPartReference;
 import org.eclipse.ui.PartInitException;
+import org.eclipse.ui.handlers.IHandlerService;
 import org.eclipse.ui.keys.IBindingService;
 import org.eclipse.ui.part.ViewPart;
 import org.eclipse.ui.progress.IWorkbenchSiteProgressService;
@@ -284,6 +290,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		getSite().getPage().addPartListener(partListener);
 		workbench().getThemeManager().addPropertyChangeListener(themeListener);
 		JFaceResources.getFontRegistry().addListener(themeListener);
+		XtermPlugin.preferences().addPropertyChangeListener(themeListener);
 	}
 
 	private void registerFunctions() {
@@ -312,6 +319,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			input((String) args[0], true);
 			return null;
 		});
+		function("javaShortcut", args -> runEclipseShortcut((String) args[0])); //$NON-NLS-1$
 		function("javaCopy", args -> { //$NON-NLS-1$
 			String text = (String) args[0];
 			if (text != null && !text.isEmpty()) {
@@ -357,6 +365,39 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			}
 			return null;
 		});
+	}
+
+	/**
+	 * Runs the Eclipse command bound to a key stroke that the user wants Eclipse to handle even in the
+	 * terminal.
+	 *
+	 * @param name
+	 *            the key stroke, as named by {@link EclipseShortcuts}
+	 * @return {@code true} if a command takes the key, {@code false} to send it to the shell
+	 */
+	boolean runEclipseShortcut(String name) {
+		KeySequence sequence = name == null ? null : EclipseShortcuts.sequence(name);
+		IBindingService bindings = workbench().getService(IBindingService.class);
+		Binding binding = sequence == null || bindings == null ? null : bindings.getPerfectMatch(sequence);
+		ParameterizedCommand command = binding == null ? null : binding.getParameterizedCommand();
+		if (command == null || !command.getCommand().isHandled()) {
+			return false;
+		}
+		// Not from within the call: the command may open a dialog, or run scripts in this browser.
+		display.asyncExec(() -> {
+			IHandlerService handlers = workbench().getService(IHandlerService.class);
+			if (handlers == null) {
+				return;
+			}
+			try {
+				handlers.executeCommand(command, null);
+			} catch (ExecutionException e) {
+				XtermPlugin.log("Could not run " + command.getId(), e); //$NON-NLS-1$
+			} catch (CommandException e) {
+				// Disabled or no longer handled: like the key in an editor, nothing happens.
+			}
+		});
+		return true;
 	}
 
 	private interface JsFunction {
@@ -799,7 +840,9 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		StringBuilder json = new StringBuilder("{\"fontFamily\":\"").append(family.replace("\"", "")) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 				.append("\",\"fontSize\":").append(size).append(",\"dark\":").append(dark) //$NON-NLS-1$ //$NON-NLS-2$
 				.append(",\"os\":\"").append(IS_WINDOWS ? "windows" : IS_MAC ? "mac" : "linux").append('"') //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
-				.append(",\"background\":\"").append(hex(background)).append('"'); //$NON-NLS-1$
+				.append(",\"background\":\"").append(hex(background)).append('"') //$NON-NLS-1$
+				.append(",\"shortcuts\":").append(EclipseShortcuts.toJson( //$NON-NLS-1$
+						EclipseShortcuts.parse(XtermPlugin.preference(XtermPlugin.PREF_ECLIPSE_SHORTCUTS))));
 		// A theme may leave the foreground unstyled: only use it when it is readable.
 		if (Math.abs(luminance(foreground) - luminance(background)) > 0.4) {
 			json.append(",\"foreground\":\"").append(hex(foreground)).append('"'); //$NON-NLS-1$
@@ -815,7 +858,10 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		return String.format("#%02x%02x%02x", rgb.red, rgb.green, rgb.blue); //$NON-NLS-1$
 	}
 
-	/** Pushes the current Eclipse colors and font to the terminal, after a theme or font change. */
+	/**
+	 * Pushes the current Eclipse colors, font and settings to the terminal, after a theme, font or
+	 * preference change.
+	 */
 	private void applyTheme() {
 		if (browser != null && !browser.isDisposed()) {
 			browser.execute("window.xtermSetTheme && xtermSetTheme(" + config() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
@@ -1026,6 +1072,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		getSite().getPage().removePartListener(partListener);
 		workbench().getThemeManager().removePropertyChangeListener(themeListener);
 		JFaceResources.getFontRegistry().removeListener(themeListener);
+		XtermPlugin.preferences().removePropertyChangeListener(themeListener);
 		setKeyFilterEnabled(true);
 		if (session != null) {
 			session.dispose();

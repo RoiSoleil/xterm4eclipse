@@ -29,7 +29,7 @@ class XtermPreferencePageTest {
 
 	static void resetPreferences() {
 		for (String key : new String[] {XtermPlugin.PREF_DEFAULT_SHELL, XtermPlugin.PREF_FOCUS_ON_FINISH,
-				XtermPlugin.PREF_RESTORE_HISTORY}) {
+				XtermPlugin.PREF_RESTORE_HISTORY, XtermPlugin.PREF_ECLIPSE_SHORTCUTS}) {
 			XtermPlugin.preferences().setToDefault(key);
 		}
 	}
@@ -42,7 +42,7 @@ class XtermPreferencePageTest {
 	}
 
 	@Test
-	void pageEditsTheThreeSettings() {
+	void pageEditsTheSettings() {
 		XtermPreferencePage page = new XtermPreferencePage();
 		page.init(null);
 		page.createControl(shell);
@@ -50,11 +50,13 @@ class XtermPreferencePageTest {
 		List<Text> texts = new ArrayList<>();
 		collect(page.getControl(), checkboxes, texts);
 		assertEquals(2, checkboxes.size());
-		assertEquals(1, texts.size());
+		assertEquals(2, texts.size());
+		assertEquals(EclipseShortcuts.DEFAULTS, texts.get(1).getText());
 		assertFalse(checkboxes.get(0).getSelection(), "focus on finish is off by default");
 		assertTrue(checkboxes.get(1).getSelection(), "history is restored by default");
 
 		texts.get(0).setText("/usr/bin/fish");
+		texts.get(1).setText("M1+3");
 		toggle(checkboxes.get(0), true);
 		toggle(checkboxes.get(1), false);
 		assertTrue(page.performOk());
@@ -62,6 +64,7 @@ class XtermPreferencePageTest {
 		assertEquals("/usr/bin/fish", ShellProfiles.defaultCommandLine());
 		assertTrue(XtermPlugin.isEnabled(XtermPlugin.PREF_FOCUS_ON_FINISH));
 		assertFalse(XtermPlugin.isEnabled(XtermPlugin.PREF_RESTORE_HISTORY));
+		assertEquals("M1+3", XtermPlugin.preference(XtermPlugin.PREF_ECLIPSE_SHORTCUTS));
 	}
 
 	private static void toggle(Button checkbox, boolean selected) {

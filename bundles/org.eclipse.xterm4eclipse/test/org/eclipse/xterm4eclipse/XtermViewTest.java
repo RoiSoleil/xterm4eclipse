@@ -20,7 +20,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import org.eclipse.core.commands.AbstractHandler;
+import org.eclipse.core.commands.Command;
+import org.eclipse.core.commands.CommandManager;
 import org.eclipse.core.commands.ExecutionEvent;
+import org.eclipse.core.commands.ParameterizedCommand;
 import org.eclipse.core.expressions.EvaluationContext;
 import org.eclipse.core.expressions.IEvaluationContext;
 import org.eclipse.core.resources.IContainer;
@@ -30,6 +34,9 @@ import org.eclipse.core.resources.IResource;
 import org.eclipse.jface.action.ActionContributionItem;
 import org.eclipse.jface.action.IAction;
 import org.eclipse.jface.action.IMenuCreator;
+import org.eclipse.jface.bindings.Binding;
+import org.eclipse.jface.bindings.keys.KeyBinding;
+import org.eclipse.jface.bindings.keys.KeySequence;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.jface.util.LocalSelectionTransfer;
 import org.eclipse.jface.viewers.ISelection;
@@ -665,6 +672,64 @@ class XtermViewTest {
 		run(view, "echo to-be-cleared", "to-be-cleared\n");
 		((ActionContributionItem) workbench.toolBar.getItems()[1]).getAction().run();
 		await("cleared", () -> !screen(view).contains("to-be-cleared"));
+	}
+
+	@Test
+	void chosenEclipseShortcutsRunTheirCommandInsteadOfGoingToTheShell() throws Exception {
+		CommandManager commands = new CommandManager();
+		Command quickAccess = commands.getCommand("quickAccess");
+		quickAccess.setHandler(new AbstractHandler() {
+			@Override
+			public Object execute(ExecutionEvent event) {
+				return null;
+			}
+		});
+		ParameterizedCommand command = new ParameterizedCommand(quickAccess, null);
+		List<Object> executed = new ArrayList<>();
+		List<String> looked = new ArrayList<>();
+		workbench.bindings.on("getPerfectMatch", args -> {
+			looked.add(args[0].toString());
+			return args[0].toString().equals("CTRL+3") ? new KeyBinding((KeySequence) args[0], command,
+					"scheme", "context", null, null, null, Binding.SYSTEM) : null;
+		});
+		workbench.handlers.on("executeCommand", args -> executed.add(args[0]));
+		XtermView view = open();
+
+		// Ctrl+3 is bound: Eclipse runs Quick Access and the shell does not see the key.
+		type(view, "echo [");
+		key(view, "Digit3", "3", true, false);
+		await("command run", () -> executed.size() == 1);
+		assertSame(command, executed.get(0));
+		// Ctrl+Shift+R is in the list but not bound, Ctrl+Shift+Y is not in the list: both for the shell.
+		key(view, "KeyR", "R", true, true);
+		key(view, "KeyY", "Y", true, true);
+		type(view, "]\r");
+		await("line run", () -> screen(view).contains("\n[]\n"));
+		assertEquals(List.of("CTRL+3", "CTRL+SHIFT+R"), looked);
+
+		// The list follows the preference.
+		XtermPlugin.preferences().setValue(XtermPlugin.PREF_ECLIPSE_SHORTCUTS, "CTRL+SHIFT+Y");
+		await("new list", () -> {
+			key(view, "KeyY", "Y", true, true);
+			return looked.size() > 2;
+		});
+		assertEquals("CTRL+SHIFT+Y", looked.get(looked.size() - 1));
+		assertFalse(view.runEclipseShortcut("not a key+++"));
+		assertFalse(view.runEclipseShortcut(null));
+	}
+
+	private static void key(XtermView view, String code, String key, boolean ctrl, boolean shift) {
+		view.browser.execute("document.querySelector('.xterm-helper-textarea').dispatchEvent(new KeyboardEvent('keydown', "
+				+ "{key: '" + key + "', code: '" + code + "', ctrlKey: " + ctrl + ", shiftKey: " + shift
+				+ ", bubbles: true, cancelable: true}))");
+	}
+
+	@Test
+	void eclipseShortcutsAreNamedLikeInThePage() {
+		assertEquals(List.of("CTRL+3", "CTRL+SHIFT+F7", "ALT+CTRL+SHIFT+X", "CTRL+PAGE_UP", "F11"),
+				EclipseShortcuts.parse("M1+3, , M1+M2+F7, M1+M2+M3+X, CTRL+PAGE_UP, F11, CTRL+X CTRL+S, bad+++, CTRL+"));
+		assertEquals("[\"CTRL+3\",\"a\\\"b\\\\\"]", EclipseShortcuts.toJson(List.of("CTRL+3", "a\"b\\")));
+		assertNull(EclipseShortcuts.sequence("bad+++"));
 	}
 
 	@Test
