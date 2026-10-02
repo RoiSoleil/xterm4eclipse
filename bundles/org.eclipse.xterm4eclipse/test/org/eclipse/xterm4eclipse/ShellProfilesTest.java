@@ -44,6 +44,11 @@ class ShellProfilesTest {
 		assertEquals("zsh", ShellProfiles.displayName("/usr/bin/zsh -l"));
 		assertEquals("pwsh", ShellProfiles.displayName("\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\""));
 		assertEquals("Xterm", ShellProfiles.displayName(""));
+		assertEquals("claude", ShellProfiles.displayName("/bin/zsh -l -i -c claude"));
+		assertEquals("claude", ShellProfiles.displayName("cmd.exe /C \"C:\\npm\\claude.cmd\""));
+		assertEquals("claude", ShellProfiles.displayName("bash -c \"'/my dir/claude' --resume\""));
+		assertEquals("vim", ShellProfiles.displayName("bash -c \"vim notes.txt\""));
+		assertEquals("bash", ShellProfiles.displayName("bash -c \"'unterminated\""));
 	}
 
 	@Test
@@ -145,6 +150,37 @@ class ShellProfilesTest {
 		String gitBash = new ShellProfiles.Profile("Git Bash", "C:\\Git\\bin\\bash.exe --login -i").icon();
 		assertEquals("icons/shells/gitbash.png", gitBash);
 		assertTrue(XtermPlugin.class.getResource("/" + gitBash) != null);
+	}
+
+	@Test
+	void claudeIsOfferedOnlyWhenItIsOnThePath() throws Exception {
+		Path bin = executable(temp.resolve("bin/claude")).getParent();
+		Path shells = temp.resolve("none");
+		List<ShellProfiles.Profile> unix = ShellProfiles
+				.detect(host("Linux", Map.of("PATH", temp.resolve("absent") + ":" + bin, "SHELL", "/bin/zsh"), shells));
+		ShellProfiles.Profile claude = unix.get(unix.size() - 1);
+		assertEquals("Claude", claude.name());
+		assertEquals("/bin/zsh -l -i -c claude", claude.commandLine(), "through the login shell of the user");
+		assertEquals("icons/shells/claude.png", claude.icon());
+		assertTrue(XtermPlugin.class.getResource("/" + claude.icon()) != null);
+		assertEquals("/bin/bash -l -i -c claude",
+				ShellProfiles.detect(host("Linux", Map.of("PATH", bin.toString()), shells)).stream()
+						.filter(profile -> profile.name().equals("Claude")).findFirst().orElseThrow().commandLine());
+		assertTrue(ShellProfiles.detect(host("Linux", Map.of("HOME", temp.toString()), shells)).stream()
+				.noneMatch(profile -> profile.name().equals("Claude")), "not on the PATH: not offered");
+
+		Path native_ = Files.createDirectories(temp.resolve("local bin"));
+		Files.createFile(native_.resolve("claude.exe"));
+		List<ShellProfiles.Profile> windows = ShellProfiles.detect(host("Windows 11", Map.of("PATH", native_.toString()), null));
+		assertEquals(List.of("Claude"), windows.stream().map(ShellProfiles.Profile::name).toList());
+		assertEquals('"' + native_.resolve("claude.exe").toString() + '"', windows.get(0).commandLine());
+
+		Path npm = Files.createDirectories(temp.resolve("npm"));
+		Files.createFile(npm.resolve("claude.cmd"));
+		ShellProfiles.Profile cmd = ShellProfiles.detect(host("Windows 11", Map.of("PATH", npm.toString()), null)).get(0);
+		assertEquals("cmd.exe /c " + npm.resolve("claude.cmd"), cmd.commandLine());
+		assertEquals("Claude", cmd.name());
+		assertEquals("claude", ShellProfiles.displayName(cmd.commandLine()));
 	}
 
 	@Test

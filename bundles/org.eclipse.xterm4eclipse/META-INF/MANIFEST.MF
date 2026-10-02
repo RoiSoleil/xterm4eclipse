@@ -9,5 +9,6 @@ Bundle-ActivationPolicy: lazy
 Automatic-Module-Name: org.eclipse.xterm4eclipse
 Require-Bundle: org.eclipse.ui,
  org.eclipse.core.runtime,
+ org.eclipse.core.expressions,
  org.eclipse.cdt.core.native,
  org.eclipse.core.resources;resolution:=optional

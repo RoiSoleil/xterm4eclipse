@@ -124,15 +124,52 @@
 			return true;
 		});
 
-		// Right click: copy the selection if there is one, paste otherwise.
+		// Right click: copy the selection if there is one, paste otherwise. A program that tracks the
+		// mouse (Claude Code, vim with mouse=a...) receives the click itself and may paste on its own:
+		// doing it here too would paste twice. Shift+right click bypasses the program, as in xterm.
 		container.addEventListener('contextmenu', function (e) {
 			e.preventDefault();
+			if (term.modes.mouseTrackingMode !== 'none' && !e.shiftKey) {
+				return;
+			}
 			if (copySelection()) {
 				term.clearSelection();
 			} else {
 				paste();
 			}
 		});
+
+		// Drag and drop: without this the browser opens the dropped file in place of the terminal.
+		// The paths are inserted as typed text, quoted for the shell by the Java side.
+		function allowDrop(e) {
+			e.preventDefault();
+			if (e.dataTransfer) {
+				e.dataTransfer.dropEffect = 'copy';
+			}
+		}
+		window.addEventListener('dragenter', allowDrop, true);
+		window.addEventListener('dragover', allowDrop, true);
+		window.addEventListener('drop', function (e) {
+			e.preventDefault();
+			e.stopPropagation();
+			var data = e.dataTransfer;
+			if (!data) {
+				return;
+			}
+			var uris = '';
+			var text = '';
+			try {
+				uris = data.getData('text/uri-list') || '';
+				text = data.getData('text/plain') || '';
+			} catch (ignored) {
+				// Some engines refuse to give the data of a foreign drag.
+			}
+			var dropped = javaDrop(uris, text);
+			if (dropped) {
+				term.paste(dropped);
+			}
+			term.focus();
+		}, true);
 
 		term.onData(function (data) { javaInput(data); });
 		term.onBinary(function (data) { javaBinary(data); });

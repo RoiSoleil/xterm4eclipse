@@ -11,11 +11,13 @@ import org.eclipse.jface.viewers.IStructuredSelection;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.widgets.Menu;
 import org.eclipse.swt.widgets.MenuItem;
+import org.eclipse.ui.ISources;
 import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.PartInitException;
 import org.eclipse.ui.actions.CompoundContributionItem;
 import org.eclipse.ui.menus.IWorkbenchContribution;
+import org.eclipse.ui.services.IEvaluationService;
 import org.eclipse.ui.services.IServiceLocator;
 
 /**
@@ -33,6 +35,9 @@ public class ShowInXtermMenu extends CompoundContributionItem implements IWorkbe
 
 	@Override
 	protected IContributionItem[] getContributionItems() {
+		// Taken now, while the menu shows: when an entry is chosen, the menu is gone and the selection
+		// of the window may already be the one of another part.
+		File directory = selectedDirectory();
 		List<IContributionItem> items = new ArrayList<>();
 		for (ShellProfiles.Profile profile : ShellProfiles.detect()) {
 			items.add(new ContributionItem() {
@@ -41,23 +46,45 @@ public class ShowInXtermMenu extends CompoundContributionItem implements IWorkbe
 					MenuItem item = new MenuItem(menu, SWT.PUSH, index);
 					item.setText(profile.name());
 					item.setImage(XtermPlugin.image(profile.icon()));
-					item.addListener(SWT.Selection, event -> show(profile));
+					item.addListener(SWT.Selection, event -> show(profile, directory));
 				}
 			});
 		}
 		return items.toArray(IContributionItem[]::new);
 	}
 
-	private void show(ShellProfiles.Profile profile) {
+	/**
+	 * @return the directory of the element the context menu was opened on, or {@code null}
+	 */
+	private File selectedDirectory() {
+		if (services == null) {
+			return null;
+		}
+		ISelection selection = null;
+		// Not typed: a service locator may hand out anything.
+		Object evaluation = services.getService((Class<?>) IEvaluationService.class);
+		if (evaluation instanceof IEvaluationService service && service.getCurrentState() != null) {
+			Object menuSelection = service.getCurrentState().getVariable(ISources.ACTIVE_MENU_SELECTION_NAME);
+			if (menuSelection instanceof ISelection value) {
+				selection = value;
+			}
+		}
+		Object window = services.getService((Class<?>) IWorkbenchWindow.class);
+		if (selection == null && window instanceof IWorkbenchWindow workbenchWindow
+				&& workbenchWindow.getSelectionService() != null) {
+			selection = workbenchWindow.getSelectionService().getSelection();
+		}
+		return selection instanceof IStructuredSelection structured && !structured.isEmpty()
+				? XtermView.directoryOf(structured.getFirstElement())
+				: null;
+	}
+
+	private void show(ShellProfiles.Profile profile, File directory) {
 		IWorkbenchWindow window = services.getService(IWorkbenchWindow.class);
 		IWorkbenchPage page = window == null ? null : window.getActivePage();
 		if (page == null) {
 			return;
 		}
-		ISelection selection = window.getSelectionService().getSelection();
-		File directory = selection instanceof IStructuredSelection structured && !structured.isEmpty()
-				? XtermView.directoryOf(structured.getFirstElement())
-				: null;
 		try {
 			XtermView.open(page, profile.commandLine(), directory);
 		} catch (PartInitException e) {

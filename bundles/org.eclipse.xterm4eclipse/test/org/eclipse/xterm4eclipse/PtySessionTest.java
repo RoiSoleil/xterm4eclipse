@@ -132,6 +132,7 @@ class PtySessionTest implements PtySession.Listener {
 		List<String> keepsLang = List
 				.of(PtySession.environment(new String[] {"/bin/sh"}, "Mac OS X", Map.of("LANG", "fr_FR.UTF-8")));
 		assertTrue(keepsLang.contains("LANG=fr_FR.UTF-8"));
+		assertTrue(unix.stream().noneMatch(entry -> entry.startsWith("CHERE_INVOKING=")));
 	}
 
 	@Test
@@ -145,5 +146,6 @@ class PtySessionTest implements PtySession.Listener {
 		assertTrue(custom.contains("PROMPT=$G"));
 		List<String> powershell = List.of(PtySession.environment(new String[] {"pwsh.exe"}, "Windows 11", Map.of()));
 		assertTrue(powershell.stream().noneMatch(entry -> entry.startsWith("PROMPT=")));
+		assertTrue(powershell.contains("CHERE_INVOKING=1"), "Git Bash stays in the directory it is started in");
 	}
 }
