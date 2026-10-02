@@ -31,8 +31,9 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
   attention through the bell or an OSC 9 / OSC 777 notification (green dot).
 - After a restart of Eclipse each terminal reopens with the same shell, directory and screen content.
 - `exit` closes the view.
-- Shift+Enter inserts a newline in Claude Code. Copy/paste: Ctrl+Shift+C / Ctrl+Shift+V,
-  Shift+Insert, right click; Cmd+C / Cmd+V on macOS; Ctrl+C (with a selection) / Ctrl+V on Windows.
+- Shift+Enter inserts a newline in Claude Code (and runs the command at a shell prompt). Copy/paste:
+  Ctrl+Shift+C / Ctrl+Shift+V, Shift+Insert, right click; Cmd+C / Cmd+V on macOS; Ctrl+C (with a
+  selection) / Ctrl+V on Windows.
 - The keys go to the shell, except a few Eclipse shortcuts that keep working in the terminal (Quick
   Access Ctrl+3, Open Resource / Type Ctrl+Shift+R / T, next view / editor / perspective
   Ctrl+F6 / F7 / F8, Ctrl+PageUp / PageDown, new terminal Ctrl+Alt+Shift+X): the list can be changed

@@ -362,6 +362,10 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			return null;
 		});
 		function("javaShortcut", args -> runEclipseShortcut((String) args[0])); //$NON-NLS-1$
+		function("javaShiftEnter", args -> { //$NON-NLS-1$
+			input(shiftEnterSequence(), false);
+			return null;
+		});
 		function("javaCopy", args -> { //$NON-NLS-1$
 			String text = (String) args[0];
 			if (text != null && !text.isEmpty()) {
@@ -515,6 +519,17 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			// No IDE bundles: the system decides how to open the file.
 			Program.launch(file.getPath());
 		}
+	}
+
+	/**
+	 * Shift+Enter inserts a newline in Claude Code and similar programs, which read it as Alt+Enter
+	 * (ESC CR). A shell at its prompt only rings the bell for that: there it runs the command, like
+	 * Enter.
+	 */
+	String shiftEnterSequence() {
+		PtySession current = session;
+		boolean atPrompt = ShellProfiles.isShell(commandLine) && (current == null || !current.isBusy());
+		return atPrompt ? "\r" : "\u001b\r"; //$NON-NLS-1$ //$NON-NLS-2$
 	}
 
 	private interface JsFunction {

@@ -990,6 +990,34 @@ class XtermViewTest {
 	}
 
 	@Test
+	void shiftEnterRunsTheCommandAtThePromptAndIsAltEnterForPrograms() throws Exception {
+		XtermView view = open();
+		type(view, "echo shift-$((2*3))");
+		shiftEnter(view);
+		await("command run by Shift+Enter", () -> screen(view).contains("shift-6\n"));
+
+		// A program in the foreground receives ESC CR, as Claude Code expects for a new line.
+		type(view, "cat -v\r");
+		await("program running", view::isDirty);
+		shiftEnter(view);
+		type(view, "\r");
+		await("Alt+Enter received", () -> screen(view).contains("^["));
+		type(view, "\u0003");
+
+		// A view running a program of its own always sends it ESC CR.
+		XtermView program = new XtermView();
+		ShellProfiles.setDefaultCommandLine("/bin/bash --norc --noprofile -c \"cat -v\"");
+		workbench.open(program, "program", null);
+		assertEquals("\u001b\r", program.shiftEnterSequence());
+		assertEquals("\r", view.shiftEnterSequence());
+	}
+
+	private static void shiftEnter(XtermView view) {
+		view.browser.execute("document.querySelector('.xterm-helper-textarea').dispatchEvent(new KeyboardEvent('keydown', "
+				+ "{key: 'Enter', code: 'Enter', shiftKey: true, bubbles: true, cancelable: true}))");
+	}
+
+	@Test
 	void directoriesAnnouncedByTheShellAreParsed() {
 		assertEquals(new File("/home/me/my project"), XtermView.parseDirectory("file://host/home/me/my%20project"));
 		assertEquals(new File("C:/Users/me"), XtermView.parseDirectory("file:///C:/Users/me"));
