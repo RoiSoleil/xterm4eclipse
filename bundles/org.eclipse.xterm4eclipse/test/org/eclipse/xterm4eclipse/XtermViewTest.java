@@ -567,6 +567,39 @@ class XtermViewTest {
 	}
 
 	@Test
+	void pastedTextCannotEscapeTheBracketedPaste() throws Exception {
+		Clipboard clipboard = new Clipboard(TestWorkbench.DISPLAY);
+		Object previous = clipboard.getContents(TextTransfer.getInstance());
+		try {
+			XtermView view = open();
+			// A text copied from a hostile page: it ends the bracketed paste and runs a second command.
+			clipboard.setContents(new Object[] {"echo safe\u001b[201~echo HACK$((1+1))\r"},
+					new Transfer[] {TextTransfer.getInstance()});
+			view.browser.execute("document.querySelector('.xterm-helper-textarea').dispatchEvent(new KeyboardEvent('keydown', "
+					+ "{key: 'V', code: 'KeyV', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true}))");
+			pump(1000);
+			assertFalse(screen(view).contains("HACK2"), "nothing runs before the user presses Enter");
+			type(view, "\r");
+			await("one command", () -> screen(view).contains("safe[201~echo HACK2"));
+
+			// Dropped and sent texts go through the same filter; tab and line breaks are kept.
+			assertEquals("a\tb\nc\rd[0m", view.browser.evaluate(
+					"return xtermSanitize('a\\tb\\nc\\rd\\u001b[0m\\u0007\\u0000\\u009b\\u007f')"));
+			type(view, "echo ");
+			drop(view, null, "drop\\u001b[201~ped");
+			type(view, "\r");
+			await("dropped text", () -> screen(view).contains("drop[201~ped\n"));
+		} finally {
+			if (previous != null) {
+				clipboard.setContents(new Object[] {previous}, new Transfer[] {TextTransfer.getInstance()});
+			} else {
+				clipboard.clearContents();
+			}
+			clipboard.dispose();
+		}
+	}
+
+	@Test
 	void restartOfEclipseBringsBackScreenShellAndDirectory() throws Exception {
 		XtermView view = open();
 		run(view, "cd /usr/share && echo marker-$((6*7))", "marker-42");

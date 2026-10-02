@@ -54,6 +54,8 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
 - Find in the terminal (Ctrl+Shift+F, Cmd+F on macOS, or *Find…* in the view menu): every match is
   highlighted, Enter / Shift+Enter go to the next / previous one, with case, whole word and regular
   expression options.
+- Pasted, dropped and sent texts are typed as text: their control characters (escape sequences) are
+  removed, so that a copied text cannot run a command by itself.
 - Preferences in *Window > Preferences > Xterm Terminal*.
 
 # Build
