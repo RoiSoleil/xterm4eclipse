@@ -55,10 +55,12 @@ import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Menu;
 import org.eclipse.swt.widgets.MenuItem;
+import org.eclipse.ui.IEditorPart;
 import org.eclipse.ui.IPartListener2;
 import org.eclipse.ui.IMemento;
 import org.eclipse.ui.ISharedImages;
 import org.eclipse.ui.ISaveablePart2;
+import org.eclipse.ui.IURIEditorInput;
 import org.eclipse.ui.IViewSite;
 import org.eclipse.ui.IWorkbench;
 import org.eclipse.ui.IWorkbenchPage;
@@ -626,9 +628,39 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	 */
 	static File directoryOf(Object element) {
 		try {
-			return WorkspaceLocations.directory(element);
+			File directory = WorkspaceLocations.directory(element);
+			if (directory != null) {
+				return directory;
+			}
 		} catch (LinkageError e) {
 			// org.eclipse.core.resources is optional.
+		}
+		// An editor on a file outside of the workspace.
+		File file = uriFile(element);
+		return file == null ? null : file.getParentFile();
+	}
+
+	/** @return the local file of an editor input on a file outside of the workspace, or {@code null} */
+	private static File uriFile(Object element) {
+		try {
+			return EditorFiles.file(element);
+		} catch (LinkageError e) {
+			// org.eclipse.ui.ide is optional.
+			return null;
+		}
+	}
+
+	/** Isolated so that the view still loads when org.eclipse.ui.ide is absent. */
+	private static final class EditorFiles {
+		static File file(Object element) {
+			if (element instanceof IURIEditorInput input && input.getURI() != null
+					&& "file".equalsIgnoreCase(input.getURI().getScheme())) { //$NON-NLS-1$
+				try {
+					return new File(input.getURI());
+				} catch (IllegalArgumentException e) {
+					return null;
+				}
+			}
 			return null;
 		}
 	}
@@ -1177,17 +1209,35 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		}
 	}
 
+	/**
+	 * Where a new terminal starts: the project of the selected resource, or else of the file of the
+	 * active editor (a file outside of the workspace: its folder), or else the home directory.
+	 */
 	private File resolveWorkingDirectory() {
-		try {
-			ISelection selection = getSite().getPage().getSelection();
-			if (selection instanceof IStructuredSelection structured && !structured.isEmpty()) {
-				File directory = WorkspaceLocations.projectDirectory(structured.getFirstElement());
-				if (directory != null && directory.isDirectory()) {
-					return directory;
-				}
+		IWorkbenchPage page = getSite().getPage();
+		ISelection selection = page.getSelection();
+		List<Object> candidates = new ArrayList<>();
+		if (selection instanceof IStructuredSelection structured && !structured.isEmpty()) {
+			candidates.add(structured.getFirstElement());
+		}
+		IEditorPart editor = page.getActiveEditor();
+		if (editor != null && editor.getEditorInput() != null) {
+			candidates.add(editor.getEditorInput());
+		}
+		for (Object candidate : candidates) {
+			File directory = null;
+			try {
+				directory = WorkspaceLocations.projectDirectory(candidate);
+			} catch (LinkageError e) {
+				// org.eclipse.core.resources is optional.
 			}
-		} catch (LinkageError e) {
-			// org.eclipse.core.resources is optional.
+			File file = directory == null ? uriFile(candidate) : null;
+			if (file != null) {
+				directory = file.getParentFile();
+			}
+			if (directory != null && directory.isDirectory()) {
+				return directory;
+			}
 		}
 		return new File(System.getProperty("user.home")); //$NON-NLS-1$
 	}
