@@ -11,4 +11,6 @@ Require-Bundle: org.eclipse.ui,
  org.eclipse.core.runtime,
  org.eclipse.core.expressions,
  org.eclipse.cdt.core.native,
- org.eclipse.core.resources;resolution:=optional
+ org.eclipse.core.resources;resolution:=optional,
+ org.eclipse.jface.text;resolution:=optional,
+ org.eclipse.ui.workbench.texteditor;resolution:=optional

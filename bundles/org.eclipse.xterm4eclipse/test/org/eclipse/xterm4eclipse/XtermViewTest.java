@@ -37,6 +37,8 @@ import org.eclipse.jface.action.IMenuCreator;
 import org.eclipse.jface.bindings.Binding;
 import org.eclipse.jface.bindings.keys.KeyBinding;
 import org.eclipse.jface.bindings.keys.KeySequence;
+import org.eclipse.jface.text.Document;
+import org.eclipse.jface.text.TextSelection;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.jface.util.LocalSelectionTransfer;
 import org.eclipse.jface.viewers.ISelection;
@@ -62,6 +64,8 @@ import org.eclipse.ui.PartInitException;
 import org.eclipse.ui.XMLMemento;
 import org.eclipse.ui.services.IEvaluationService;
 import org.eclipse.ui.services.IServiceLocator;
+import org.eclipse.ui.texteditor.IDocumentProvider;
+import org.eclipse.ui.texteditor.ITextEditor;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -730,6 +734,69 @@ class XtermViewTest {
 				EclipseShortcuts.parse("M1+3, , M1+M2+F7, M1+M2+M3+X, CTRL+PAGE_UP, F11, CTRL+X CTRL+S, bad+++, CTRL+"));
 		assertEquals("[\"CTRL+3\",\"a\\\"b\\\\\"]", EclipseShortcuts.toJson(List.of("CTRL+3", "a\"b\\")));
 		assertNull(EclipseShortcuts.sequence("bad+++"));
+	}
+
+	@Test
+	void selectedTextRunsInTheLastActiveTerminal() throws Exception {
+		List<XtermView> opened = new ArrayList<>();
+		workbench.page.on("showView", args -> {
+			try {
+				XtermView view = new XtermView();
+				workbench.open(view, (String) args[1], null);
+				opened.add(view);
+			} catch (Exception e) {
+				throw new AssertionError(e);
+			}
+			return null;
+		});
+		IWorkbenchPage page = workbench.workbenchPage;
+
+		// No terminal yet: one is opened and runs the text once its shell is ready.
+		XtermView.run(page, "echo first-$((1+1))\n\n");
+		assertEquals(1, opened.size());
+		await("run in a new terminal", () -> screen(opened.get(0)).contains("first-2\n"));
+
+		// A terminal was active: the text runs there, as one block even on several lines.
+		XtermView view = open();
+		workbench.partListeners.get(workbench.partListeners.size() - 1).partActivated(workbench.reference(view));
+		XtermView.run(page, "echo second-é\necho third");
+		await("run in the active terminal", () -> screen(view).contains("second-é\nthird\n"));
+		assertEquals(1, opened.size());
+		assertEquals(1, workbench.page.count("bringToTop"));
+
+		// Through the command, from the selection of an editor.
+		IWorkbenchWindow window = new Fake().on("getActivePage", args -> page).as(IWorkbenchWindow.class);
+		EvaluationContext context = new EvaluationContext(null, new Object());
+		context.addVariable(ISources.ACTIVE_WORKBENCH_WINDOW_NAME, window);
+		Document document = new Document("echo line-one\necho line-$((1+1))\n");
+		context.addVariable(ISources.ACTIVE_CURRENT_SELECTION_NAME, new TextSelection(document, 15, 0));
+		ITextEditor editor = new Fake()
+				.on("getDocumentProvider", args -> new Fake().on("getDocument", a -> document).as(IDocumentProvider.class))
+				.as(ITextEditor.class);
+		context.addVariable(ISources.ACTIVE_PART_NAME, editor);
+		new RunSelectionHandler().execute(new ExecutionEvent(null, Map.of(), null, context));
+		await("line of the cursor run", () -> screen(view).contains("\nline-2\n"));
+
+		// Nothing to run: no text selection, a blank line, a part that is not a text editor.
+		assertNull(RunSelectionHandler.textToRun(new StructuredSelection("x"), editor));
+		assertEquals("echo line-one", RunSelectionHandler.textToRun(new TextSelection(document, 0, 13), null));
+		assertNull(RunSelectionHandler.textToRun(new TextSelection(document, 0, 0), null));
+		assertNull(RunSelectionHandler.textToRun(new TextSelection(document, 500, 0), editor));
+		assertNull(RunSelectionHandler.textToRun(new TextSelection(document, 0, 0), new Fake().as(ITextEditor.class)));
+		context.addVariable(ISources.ACTIVE_CURRENT_SELECTION_NAME, new TextSelection(document, document.getLength(), 0));
+		assertNull(new RunSelectionHandler().execute(new ExecutionEvent(null, Map.of(), null, context)));
+
+		// Closed: the next text goes to a new terminal again.
+		view.dispose();
+		workbench.views.remove(view);
+		XtermView.run(page, "echo fourth");
+		assertEquals(2, opened.size());
+		workbench.page.on("showView", args -> {
+			throw new IllegalStateException(new PartInitException("no more views"));
+		});
+		context.addVariable(ISources.ACTIVE_CURRENT_SELECTION_NAME, new TextSelection(document, 0, 4));
+		assertThrows(IllegalStateException.class,
+				() -> new RunSelectionHandler().execute(new ExecutionEvent(null, Map.of(), null, context)));
 	}
 
 	@Test

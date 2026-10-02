@@ -34,6 +34,9 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
   Access Ctrl+3, Open Resource / Type Ctrl+Shift+R / T, next view / editor / perspective
   Ctrl+F6 / F7 / F8, Ctrl+PageUp / PageDown, new terminal Ctrl+Alt+Shift+X): the list can be changed
   in the preferences.
+- *Run Selected Text in Terminal* (Ctrl+Alt+Enter, Cmd+Alt+Enter on macOS, or the context menu of
+  text editors): runs the selection, or the line of the cursor, in the last active terminal (a new
+  one if there is none).
 - Preferences in *Window > Preferences > Xterm Terminal*.
 
 # Build
