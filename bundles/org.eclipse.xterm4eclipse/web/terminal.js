@@ -17,6 +17,44 @@
 		}
 	};
 
+	/**
+	 * The words of a line of output that may be file paths, with the line and column that follow them.
+	 * Whether the file exists is for the Java side to tell.
+	 */
+	function fileLinkCandidates(text) {
+		var result = [];
+		var word = /[^\s"'`()<>\[\]{}|,;]+/g;
+		var match;
+		while ((match = word.exec(text)) !== null) {
+			var token = match[0].replace(/[:.]$/, ''); // end of the sentence or of a compiler message
+			var start = match.index;
+			if (/^[a-z][\w+.-]*:\/\//i.test(token)) {
+				continue; // a URL, for the web links
+			}
+			var position = /^(.*?)(?::(\d+)(?:[:.](\d+))?)?$/.exec(token);
+			var path = position[1];
+			var line = position[2] ? parseInt(position[2], 10) : 0;
+			var column = position[3] ? parseInt(position[3], 10) : 0;
+			var end = start + token.length;
+			var after = text.substring(end);
+			var suffix = /^\((\d+)(?:,\s*(\d+))?\)/.exec(after) || /^", line (\d+)/.exec(after);
+			if (!line && suffix) {
+				line = parseInt(suffix[1], 10);
+				column = suffix[2] ? parseInt(suffix[2], 10) : 0;
+				if (suffix[0].charAt(0) === '(') {
+					end += suffix[0].length;
+				}
+			}
+			// A path has a separator or an extension; a word that is only dots or digits is not one.
+			if (!/[\\\/]|\.[A-Za-z]\w*$/.test(path) || /^[.\d]*$/.test(path)) {
+				continue;
+			}
+			result.push({ start: start, end: end, text: text.substring(start, end), path: path, line: line, column: column });
+		}
+		return result;
+	}
+	window.xtermFileLinkCandidates = fileLinkCandidates;
+
 	// Called by the Java side once the page is loaded and the java* functions are available.
 	window.xtermInit = function (cfg) {
 		if (window.xtermWrite) {
@@ -57,6 +95,38 @@
 				javaOpenLink(uri);
 			}
 		}));
+
+		// File paths printed by compilers, test runners, grep, git...: Ctrl+click opens them in Eclipse,
+		// at the line and column given with them (file:12:5, file(12,5), File "file", line 12).
+		term.registerLinkProvider({
+			provideLinks: function (y, callback) {
+				var line = term.buffer.active.getLine(y - 1);
+				var candidates = line ? fileLinkCandidates(line.translateToString(true)) : [];
+				if (!candidates.length) {
+					callback(undefined);
+					return;
+				}
+				var files = javaResolveFiles(candidates.map(function (c) { return c.path; })) || [];
+				var links = [];
+				candidates.forEach(function (candidate, i) {
+					var file = files[i];
+					if (!file) {
+						return;
+					}
+					links.push({
+						range: { start: { x: candidate.start + 1, y: y }, end: { x: candidate.end, y: y } },
+						text: candidate.text,
+						decorations: { pointerCursor: true, underline: true },
+						activate: function (e) {
+							if (e.ctrlKey || e.metaKey) {
+								javaOpenFile(file, candidate.line, candidate.column);
+							}
+						}
+					});
+				});
+				callback(links.length ? links : undefined);
+			}
+		});
 
 		var container = document.getElementById('terminal');
 		term.open(container);

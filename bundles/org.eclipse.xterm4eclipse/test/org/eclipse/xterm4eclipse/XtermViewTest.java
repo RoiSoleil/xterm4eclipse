@@ -800,6 +800,90 @@ class XtermViewTest {
 	}
 
 	@Test
+	void ctrlClickOnAFilePathOpensItAtItsLine() throws Exception {
+		Path directory = Files.createTempDirectory("xterm-links");
+		Files.writeString(directory.resolve("notes.txt"), "one\ntwo\nthree\n");
+		List<String> opened = new ArrayList<>();
+		XtermView view = open(new XtermView() {
+			@Override
+			void openFile(File file, int line, int column) {
+				opened.add(file.getName() + "@" + line + ":" + column);
+			}
+		});
+		run(view, "cd " + directory + " && echo \"notes.txt:2:3: warning\"; echo \"missing.txt:1 notes.txt(3,1)\"",
+				"notes.txt(3,1)");
+
+		// Only the files that exist, relative to the directory the shell is in, become links.
+		click(view, "notes.txt:2:3", true);
+		await("file opened", () -> opened.size() == 1);
+		assertEquals("notes.txt@2:3", opened.get(0));
+		click(view, "missing.txt", true);
+		click(view, "notes.txt:2:3", false);
+		click(view, "notes.txt(3,1)", true);
+		await("second file opened", () -> opened.size() == 2);
+		assertEquals("notes.txt@3:1", opened.get(1));
+		deleteTree(directory);
+	}
+
+	/** Moves the mouse over the first occurrence of the text on the screen, then clicks it. */
+	private static void click(XtermView view, String text, boolean ctrl) {
+		String position = "var rows = document.querySelectorAll('.xterm-rows > div'); var target = null;"
+				+ "for (var i = rows.length - 1; i >= 0 && !target; i--) {"
+				+ "  var walker = document.createTreeWalker(rows[i], NodeFilter.SHOW_TEXT); var node;"
+				+ "  while ((node = walker.nextNode()) && !target) {"
+				+ "    var index = node.textContent.indexOf('" + text + "');"
+				+ "    if (index >= 0 && !/[$]/.test(rows[i].textContent)) {"
+				+ "      var range = document.createRange(); range.setStart(node, index); range.setEnd(node, index + 1);"
+				+ "      target = range.getBoundingClientRect(); } } }"
+				+ "var x = target.left + target.width / 2; var y = target.top + target.height / 2;"
+				+ "var screen = document.querySelector('.xterm-screen');";
+		view.browser.execute(position
+				+ "screen.dispatchEvent(new MouseEvent('mousemove', {clientX: x, clientY: y, bubbles: true}));");
+		pump(300);
+		view.browser.execute(position + "['mousedown', 'mouseup', 'click'].forEach(function (type) {"
+				+ "screen.dispatchEvent(new MouseEvent(type, {clientX: x, clientY: y, bubbles: true, button: 0, ctrlKey: "
+				+ ctrl + "})); });");
+		pump(300);
+	}
+
+	private static void deleteTree(Path directory) throws Exception {
+		try (var files = Files.walk(directory)) {
+			for (Path file : files.sorted(java.util.Comparator.reverseOrder()).toList()) {
+				Files.delete(file);
+			}
+		}
+	}
+
+	@Test
+	void filePathsAreFoundInTheOutput() throws Exception {
+		XtermView view = open();
+		assertEquals("[{\"start\":0,\"end\":22,\"text\":\"src/main/Foo.java:12:5\",\"path\":\"src/main/Foo.java\",\"line\":12,\"column\":5}]",
+				candidates(view, "src/main/Foo.java:12:5: error: x"));
+		assertEquals("[{\"start\":8,\"end\":17,\"text\":\"/tmp/a.py\",\"path\":\"/tmp/a.py\",\"line\":7,\"column\":0}]",
+				candidates(view, "  File \\\"/tmp/a.py\\\", line 7, in <module>"));
+		assertEquals("[{\"start\":0,\"end\":16,\"text\":\"Program.cs(12,5)\",\"path\":\"Program.cs\",\"line\":12,\"column\":5}]",
+				candidates(view, "Program.cs(12,5): error CS1002"));
+		assertEquals("[]", candidates(view, "see https://example.org/a.js, version 1.2.3 or Makefile"));
+
+		File directory = new File("/usr");
+		assertEquals(new File("/usr/bin/env").getCanonicalFile(), XtermView.resolveFile("/usr/bin/env", null));
+		assertEquals(new File("/usr/bin/env").getCanonicalFile(), XtermView.resolveFile("bin/env", directory));
+		assertEquals(new File("/usr/bin/env").getCanonicalFile(), XtermView.resolveFile("../usr/bin/env", directory));
+		assertNull(XtermView.resolveFile("bin", directory), "a directory is not a file");
+		assertNull(XtermView.resolveFile("bin/env", null));
+		assertNull(XtermView.resolveFile("no/such/file.txt", directory));
+		assertNull(XtermView.resolveFile(" ", directory));
+		assertNull(XtermView.resolveFile(null, directory));
+		assertNull(XtermView.resolveFile("~/no/such/file.txt", directory));
+		assertEquals("[null]", String.valueOf(view.browser.evaluate("return JSON.stringify(javaResolveFiles(['nothing.txt']))")));
+		assertEquals("[]", String.valueOf(view.browser.evaluate("return JSON.stringify(javaResolveFiles([]))")));
+	}
+
+	private static String candidates(XtermView view, String line) {
+		return String.valueOf(view.browser.evaluate("return JSON.stringify(xtermFileLinkCandidates(\"" + line + "\"))"));
+	}
+
+	@Test
 	void directoriesAnnouncedByTheShellAreParsed() {
 		assertEquals(new File("/home/me/my project"), XtermView.parseDirectory("file://host/home/me/my%20project"));
 		assertEquals(new File("C:/Users/me"), XtermView.parseDirectory("file:///C:/Users/me"));

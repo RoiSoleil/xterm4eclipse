@@ -37,6 +37,10 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
 - *Run Selected Text in Terminal* (Ctrl+Alt+Enter, Cmd+Alt+Enter on macOS, or the context menu of
   text editors): runs the selection, or the line of the cursor, in the last active terminal (a new
   one if there is none).
+- Ctrl+click (Cmd+click on macOS) on a file path printed in the terminal opens it in an Eclipse
+  editor, at the line and column given with it (`src/Foo.java:12:5`, `Foo.cs(12,5)`,
+  `File "foo.py", line 12`). Relative paths are resolved from the directory of the shell. Ctrl+click on
+  a URL opens it in the browser.
 - Preferences in *Window > Preferences > Xterm Terminal*.
 
 # Build
