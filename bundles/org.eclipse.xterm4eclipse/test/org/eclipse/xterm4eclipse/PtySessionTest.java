@@ -106,6 +106,16 @@ class PtySessionTest implements PtySession.Listener {
 	}
 
 	@Test
+	void exitIsReportedEvenIfABackgroundJobKeepsTheTerminalOpen() throws Exception {
+		// The same situation as on Windows, where the stream of the terminal outlives the shell.
+		start("/bin/sh");
+		send("sleep 20 &\n");
+		send("exit 4\n");
+		await("exit", () -> exitCode.get() != null);
+		assertEquals(4, exitCode.get());
+	}
+
+	@Test
 	void disposeKillsTheShellWithoutReportingAnExit() throws Exception {
 		start("/bin/sh");
 		await("alive", session::isAlive);

@@ -4,11 +4,16 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.core.runtime.preferences.InstanceScope;
 import org.eclipse.jface.preference.IPreferenceStore;
 import org.eclipse.jface.preference.PreferenceStore;
+import org.eclipse.jface.resource.ImageDescriptor;
+import org.eclipse.swt.graphics.Image;
+import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.preferences.ScopedPreferenceStore;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.FrameworkUtil;
@@ -30,6 +35,7 @@ final class XtermPlugin {
 
 	private static final Bundle BUNDLE = FrameworkUtil.getBundle(XtermPlugin.class);
 	private static IPreferenceStore preferences;
+	private static final Map<String, Image> IMAGES = new HashMap<>();
 
 	private XtermPlugin() {
 	}
@@ -84,6 +90,21 @@ final class XtermPlugin {
 		} else {
 			System.err.println(message + ": " + exception); //$NON-NLS-1$
 		}
+	}
+
+	/**
+	 * An image of the plug-in, for example {@code icons/shells/bash.png}. Must be called on the UI
+	 * thread; the image is shared and disposed with the display.
+	 */
+	static Image image(String path) {
+		Image image = IMAGES.get(path);
+		if (image == null || image.isDisposed()) {
+			Image created = ImageDescriptor.createFromFile(XtermPlugin.class, '/' + path).createImage();
+			Display.getCurrent().disposeExec(created::dispose);
+			IMAGES.put(path, created);
+			image = created;
+		}
+		return image;
 	}
 
 	/** Reads a text file of the plug-in, for example {@code web/index.html}. */

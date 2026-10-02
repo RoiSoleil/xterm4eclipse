@@ -13,6 +13,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import org.eclipse.core.resources.IContainer;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.Adapters;
 import org.eclipse.core.runtime.IPath;
@@ -86,6 +87,8 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 
 	/** Shell requested by the "New Terminal" menu for the view that is about to be created. */
 	private static String nextCommandLine;
+	/** Directory requested by "Show in Xterm" for the view that is about to be created. */
+	private static File nextDirectory;
 
 	Browser browser;
 	private Display display;
@@ -167,6 +170,8 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 		if (nextCommandLine != null) {
 			commandLine = nextCommandLine;
 			nextCommandLine = null;
+			workingDirectory = nextDirectory;
+			nextDirectory = null;
 		} else if (memento != null && memento.getString(MEMENTO_SHELL) != null) {
 			commandLine = memento.getString(MEMENTO_SHELL);
 		} else {
@@ -388,13 +393,38 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 
 	/** Opens one more terminal in the page, running the given shell. */
 	static void open(IWorkbenchPage page, String shellCommandLine) throws PartInitException {
+		open(page, shellCommandLine, null);
+	}
+
+	/**
+	 * Opens one more terminal in the page.
+	 *
+	 * @param directory
+	 *            where the shell starts, or {@code null} for the project of the selection
+	 */
+	static void open(IWorkbenchPage page, String shellCommandLine, File directory) throws PartInitException {
 		nextCommandLine = shellCommandLine;
+		nextDirectory = directory != null && directory.isDirectory() ? directory : null;
 		try {
 			// The first terminal is the plain view, the next ones are numbered copies of it.
 			String secondaryId = page.findViewReference(ID) == null ? null : "t" + System.currentTimeMillis(); //$NON-NLS-1$
 			page.showView(ID, secondaryId, IWorkbenchPage.VIEW_ACTIVATE);
 		} finally {
 			nextCommandLine = null;
+			nextDirectory = null;
+		}
+	}
+
+	/**
+	 * @return the directory of a selected resource (the folder holding it for a file), or
+	 *         {@code null} if the element is not a resource
+	 */
+	static File directoryOf(Object element) {
+		try {
+			return WorkspaceLocations.directory(element);
+		} catch (LinkageError e) {
+			// org.eclipse.core.resources is optional.
+			return null;
 		}
 	}
 
@@ -415,6 +445,7 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 				MenuItem item = new MenuItem(menu, SWT.PUSH);
 				item.setText(profile.commandLine().equals(defaultCommandLine) ? profile.name() + " (default)" //$NON-NLS-1$
 						: profile.name());
+				item.setImage(XtermPlugin.image(profile.icon()));
 				item.addListener(SWT.Selection, event -> openTerminal(profile.commandLine()));
 			}
 			new MenuItem(menu, SWT.SEPARATOR);
@@ -799,6 +830,15 @@ public class XtermView extends ViewPart implements PtySession.Listener {
 				return null;
 			}
 			IPath location = resource.getProject().getLocation();
+			return location == null ? null : location.toFile();
+		}
+
+		static File directory(Object element) {
+			IResource resource = Adapters.adapt(element, IResource.class);
+			if (resource == null) {
+				return null;
+			}
+			IPath location = (resource instanceof IContainer ? resource : resource.getParent()).getLocation();
 			return location == null ? null : location.toFile();
 		}
 	}

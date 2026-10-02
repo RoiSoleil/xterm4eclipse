@@ -35,6 +35,10 @@ final class PtySession {
 	private final OutputStream stdin;
 	private final ExecutorService writer = Executors.newSingleThreadExecutor(r -> daemon(r, "Xterm PTY writer")); //$NON-NLS-1$
 	private volatile boolean alive = true;
+	private Listener listener;
+
+	/** How long the output may keep coming after the shell has exited. */
+	private static final long DRAIN_MILLIS = 500;
 
 	PtySession(String[] command, File workingDirectory, int cols, int rows, Listener listener) throws IOException {
 		pty = new PTY(PTY.Mode.TERMINAL);
@@ -43,7 +47,10 @@ final class PtySession {
 		// The size set before exec is not always honoured, set it again once the child exists.
 		pty.setTerminalSize(cols, rows);
 		stdin = pty.getOutputStream();
-		daemon(() -> pump(listener), "Xterm PTY reader").start(); //$NON-NLS-1$
+		Thread reader = daemon(this::pump, "Xterm PTY reader"); //$NON-NLS-1$
+		this.listener = listener;
+		reader.start();
+		daemon(() -> awaitExit(reader), "Xterm PTY exit watcher").start(); //$NON-NLS-1$
 	}
 
 	boolean isAlive() {
@@ -132,7 +139,7 @@ final class PtySession {
 		daemon(process::destroy, "Xterm PTY terminator").start(); //$NON-NLS-1$
 	}
 
-	private void pump(Listener listener) {
+	private void pump() {
 		byte[] buffer = new byte[16 * 1024];
 		try (InputStream in = pty.getInputStream()) {
 			int n;
@@ -144,15 +151,32 @@ final class PtySession {
 		} catch (IOException e) {
 			// Reading from a closed PTY fails with EIO on Linux: this is the normal end of stream.
 		}
+	}
+
+	/**
+	 * The session ends when the shell exits. The end of the output cannot be used for that: on
+	 * Windows the stream of a pseudo console stays open after the process is gone, and on Unix a
+	 * background job left by the shell keeps the terminal open.
+	 */
+	private void awaitExit(Thread reader) {
 		int exitCode = -1;
 		try {
 			exitCode = process.waitFor();
+			// Let the last output through before the exit is reported.
+			reader.join(DRAIN_MILLIS);
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 		}
 		boolean wasAlive = alive;
 		alive = false;
 		writer.shutdownNow();
+		if (reader.isAlive()) {
+			try {
+				pty.getInputStream().close();
+			} catch (IOException e) {
+				// Nothing more to read anyway.
+			}
+		}
 		if (wasAlive) {
 			listener.exited(this, exitCode);
 		}

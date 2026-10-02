@@ -22,6 +22,8 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
 - xterm.js rendering in the colors and font of the Eclipse theme.
 - Shell chooser on the **+** button (shells of `/etc/shells`; PowerShell, cmd, Git Bash, WSL on
   Windows), with a default shell.
+- *Show in Xterm* in the context menu of resources: opens a shell in the directory of the selection.
+- Toolbar button and Ctrl+Alt+Shift+X to open a terminal.
 - Tab icon showing a running command (orange dot) and a finished command or a program asking for
   attention through the bell or an OSC 9 / OSC 777 notification (green dot).
 - After a restart of Eclipse each terminal reopens with the same shell, directory and screen content.
