@@ -56,7 +56,17 @@
 	window.xtermFileLinkCandidates = fileLinkCandidates;
 
 	// Called by the Java side once the page is loaded and the java* functions are available.
-	window.xtermInit = function (cfg) {
+	function base64Bytes(base64) {
+		var binary = atob(base64);
+		var bytes = new Uint8Array(binary.length);
+		for (var i = 0; i < binary.length; i++) {
+			bytes[i] = binary.charCodeAt(i);
+		}
+		return bytes;
+	}
+
+	// replay: the screen of a terminal that moves here with its program, and the size it had.
+	window.xtermInit = function (cfg, replay) {
 		if (window.xtermWrite) {
 			return;
 		}
@@ -304,9 +314,21 @@
 		});
 		term.onTitleChange(function (title) { javaTitle(title); });
 
+		// The screen of a moving terminal is drawn at its old size, then fitted like any terminal: xterm.js
+		// then moves the lines and the cursor as the program expects.
+		var replaying = false;
+		if (replay && replay.data) {
+			replaying = true;
+			term.resize(replay.cols, replay.rows);
+			term.write(base64Bytes(replay.data), function () {
+				replaying = false;
+				doFit();
+			});
+		}
+
 		var started = false;
 		function doFit() {
-			if (!container.clientWidth || !container.clientHeight) {
+			if (replaying || !container.clientWidth || !container.clientHeight) {
 				return; // view not visible yet
 			}
 			fit.fit();
@@ -327,16 +349,16 @@
 		}).observe(container);
 
 		window.xtermWrite = function (base64) {
-			var binary = atob(base64);
-			var bytes = new Uint8Array(binary.length);
-			for (var i = 0; i < binary.length; i++) {
-				bytes[i] = binary.charCodeAt(i);
-			}
-			term.write(bytes);
+			term.write(base64Bytes(base64));
 		};
 		// The screen and scrollback as escape sequences, replayed after an Eclipse restart.
 		window.xtermSerialize = function () {
 			return serializer.serialize({ scrollback: 2000, excludeAltBuffer: true, excludeModes: true });
+		};
+		// The whole state of the screen, alternate screen and modes included, to show it again in
+		// another part when the terminal moves there with its running program.
+		window.xtermSnapshot = function () {
+			return serializer.serialize({ excludeAltBuffer: false, excludeModes: false });
 		};
 		window.xtermSetTheme = function (config) {
 			term.options.theme = themeOf(config);

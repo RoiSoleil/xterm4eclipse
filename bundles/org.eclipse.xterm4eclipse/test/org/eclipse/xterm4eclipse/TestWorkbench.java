@@ -12,6 +12,8 @@ import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.IActionBars;
+import org.eclipse.ui.IEditorInput;
+import org.eclipse.ui.IEditorSite;
 import org.eclipse.ui.IMemento;
 import org.eclipse.ui.IPartListener2;
 import org.eclipse.ui.ISharedImages;
@@ -46,6 +48,7 @@ final class TestWorkbench {
 	final List<IPropertyChangeListener> themeListeners = new ArrayList<>();
 	final List<Shell> shells = new ArrayList<>();
 	final List<XtermView> views = new ArrayList<>();
+	final List<XtermEditor> editors = new ArrayList<>();
 	boolean closing;
 	ISelection selection;
 	Object activePart;
@@ -79,6 +82,33 @@ final class TestWorkbench {
 				.as(IViewSite.class);
 	}
 
+	IEditorSite editorSite() {
+		IWorkbenchWindow window = new Fake().on("getWorkbench", args -> workbench.as(IWorkbench.class))
+				.as(IWorkbenchWindow.class);
+		return new Fake().on("getPage", args -> workbenchPage)
+				.on("getActionBars", args -> new Fake().as(IActionBars.class))
+				.on("getWorkbenchWindow", args -> window)
+				.on("getService",
+						args -> args[0] == IWorkbenchSiteProgressService.class
+								? progress.as(IWorkbenchSiteProgressService.class)
+								: null)
+				.as(IEditorSite.class);
+	}
+
+	/** Creates an editor the way the workbench does, in its own window. */
+	XtermEditor openEditor(IEditorInput input) throws Exception {
+		XtermEditor editor = new XtermEditor();
+		editor.init(editorSite(), input);
+		Shell shell = new Shell(DISPLAY);
+		shell.setLayout(new FillLayout());
+		shell.setSize(700, 420);
+		editor.createPartControl(shell);
+		shell.open();
+		shells.add(shell);
+		editors.add(editor);
+		return editor;
+	}
+
 	/** Creates a view the way the workbench does, in its own window. */
 	XtermView open(XtermView view, String secondaryId, IMemento memento) throws Exception {
 		view.init(site(secondaryId), memento);
@@ -99,6 +129,9 @@ final class TestWorkbench {
 	void close() {
 		for (XtermView view : views) {
 			view.dispose();
+		}
+		for (XtermEditor editor : editors) {
+			editor.dispose();
 		}
 		for (Shell shell : shells) {
 			shell.dispose();
