@@ -94,6 +94,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	private static final long QUIET_MILLIS = 1500;
 	private static final String MEMENTO_SHELL = "shell"; //$NON-NLS-1$
 	private static final String MEMENTO_DIRECTORY = "directory"; //$NON-NLS-1$
+	private static final String MEMENTO_NAME = "name"; //$NON-NLS-1$
 
 	/** How long the browser may stay hidden while its page loads. */
 	static int revealTimeoutMillis = 1500;
@@ -145,6 +146,8 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	/** Start of the current stretch of continuous output, 0 if there is none. */
 	private long workStartMillis;
 	private String commandLine;
+	/** Name given by the user, which the titles set by the programs no longer replace. */
+	private String customName;
 	private long sessionStart;
 	/** Screen content saved before the last Eclipse shutdown, replayed once when the view opens. */
 	private byte[] restoredContent;
@@ -204,6 +207,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			commandLine = ShellProfiles.defaultCommandLine();
 		}
 		if (memento != null && !requested) {
+			customName = memento.getString(MEMENTO_NAME);
 			String directory = memento.getString(MEMENTO_DIRECTORY);
 			if (directory != null && new File(directory).isDirectory()) {
 				workingDirectory = new File(directory);
@@ -222,6 +226,9 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	@Override
 	public void saveState(IMemento memento) {
 		memento.putString(MEMENTO_SHELL, commandLine);
+		if (customName != null) {
+			memento.putString(MEMENTO_NAME, customName);
+		}
 		File directory = session != null ? session.currentDirectory() : null;
 		if (directory == null) {
 			directory = reportedDirectory != null ? reportedDirectory : workingDirectory;
@@ -258,7 +265,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	@Override
 	public void createPartControl(Composite parent) {
 		display = parent.getDisplay();
-		setPartName(ShellProfiles.displayName(commandLine));
+		setPartName(customName != null ? customName : ShellProfiles.displayName(commandLine));
 		clipboard = new Clipboard(display);
 		if (workingDirectory == null) {
 			workingDirectory = resolveWorkingDirectory();
@@ -392,6 +399,9 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			String title = (String) args[0];
 			if (title != null && !title.isBlank()) {
 				setTitleToolTip(title);
+				if (customName != null) {
+					return null;
+				}
 				setPartName(title.length() > MAX_TITLE_LENGTH
 						? "…" + title.substring(title.length() - MAX_TITLE_LENGTH) //$NON-NLS-1$
 						: title);
@@ -529,6 +539,17 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		};
 		clear.setImageDescriptor(images.getImageDescriptor(ISharedImages.IMG_ETOOL_CLEAR));
 		toolBar.add(clear);
+
+		Action rename = new Action("Rename\u2026") { //$NON-NLS-1$
+			@Override
+			public void run() {
+				String name = askName(getPartName());
+				if (name != null) {
+					rename(name);
+				}
+			}
+		};
+		getViewSite().getActionBars().getMenuManager().add(rename);
 	}
 
 	private void openTerminal(String shellCommandLine) {
@@ -676,6 +697,29 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 				menu = null;
 			}
 		}
+	}
+
+	/**
+	 * Gives the terminal a name of the user's choice, kept after a restart of Eclipse.
+	 *
+	 * @param name
+	 *            the new name, or an empty one to name the terminal after its program again
+	 */
+	void rename(String name) {
+		String trimmed = name.trim();
+		customName = trimmed.isEmpty() ? null : trimmed;
+		setPartName(customName != null ? customName : ShellProfiles.displayName(commandLine));
+	}
+
+	/**
+	 * Asks the user for a new name for the terminal.
+	 *
+	 * @return the name, empty to go back to the automatic name, or {@code null} if the user cancelled
+	 */
+	String askName(String current) {
+		InputDialog dialog = new InputDialog(getSite().getShell(), "Rename Terminal", //$NON-NLS-1$
+				"Name of the terminal (empty: the title set by the program):", current, null); //$NON-NLS-1$
+		return dialog.open() == Window.OK ? dialog.getValue() : null;
 	}
 
 	/**

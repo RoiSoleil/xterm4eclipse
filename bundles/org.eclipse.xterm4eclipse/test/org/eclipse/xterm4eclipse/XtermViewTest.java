@@ -366,6 +366,44 @@ class XtermViewTest {
 	}
 
 	@Test
+	void renamedTerminalKeepsItsNameAcrossTitlesAndRestarts() throws Exception {
+		String[] answer = {null};
+		XtermView view = open(new XtermView() {
+			@Override
+			String askName(String current) {
+				assertEquals("bash", current);
+				return answer[0];
+			}
+		});
+		IAction rename = ((ActionContributionItem) workbench.viewMenu.getItems()[0]).getAction();
+		rename.run();
+		assertEquals("bash", view.getPartName(), "cancelled");
+		answer[0] = "  build server ";
+		rename.run();
+		assertEquals("build server", view.getPartName());
+
+		// The titles of the programs only go to the tool tip now.
+		run(view, "printf '\\033]0;program title\\007'; echo ok", "ok\n");
+		await("tool tip", () -> "program title".equals(view.getTitleToolTip()));
+		assertEquals("build server", view.getPartName());
+
+		XMLMemento memento = XMLMemento.createWriteRoot("view");
+		view.saveState(memento);
+		assertEquals("build server", memento.getString("name"));
+		workbench.closing = true;
+		XtermView restored = new XtermView();
+		workbench.open(restored, "second", memento);
+		assertEquals("build server", restored.getPartName());
+
+		// An empty name gives the automatic one back.
+		view.rename(" ");
+		assertEquals("bash", view.getPartName());
+		XMLMemento cleared = XMLMemento.createWriteRoot("view");
+		view.saveState(cleared);
+		assertNull(cleared.getString("name"));
+	}
+
+	@Test
 	void colorsFollowTheEclipseTheme() throws Exception {
 		XtermView view = open();
 		Shell parent = workbench.shells.get(0);
