@@ -370,6 +370,24 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			Program.launch((String) args[0]);
 			return null;
 		});
+		function("javaResolveFiles", args -> { //$NON-NLS-1$
+			Object[] candidates = args.length > 0 && args[0] instanceof Object[] array ? array : new Object[0];
+			Object[] result = new Object[candidates.length];
+			File directory = candidates.length == 0 ? null : currentDirectory();
+			for (int i = 0; i < candidates.length; i++) {
+				File file = candidates[i] instanceof String text ? resolveFile(text, directory) : null;
+				result[i] = file == null ? null : file.getPath();
+			}
+			return result;
+		});
+		function("javaOpenFile", args -> { //$NON-NLS-1$
+			File file = new File((String) args[0]);
+			int line = args.length > 1 && args[1] instanceof Number number ? number.intValue() : 0;
+			int column = args.length > 2 && args[2] instanceof Number number ? number.intValue() : 0;
+			// Not from within the call: opening an editor runs the event loop.
+			display.asyncExec(() -> openFile(file, line, column));
+			return null;
+		});
 		function("javaTitle", args -> { //$NON-NLS-1$
 			String title = (String) args[0];
 			if (title != null && !title.isBlank()) {
@@ -413,6 +431,60 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			}
 		});
 		return true;
+	}
+
+	/** @return where the shell is now, as far as it is known */
+	private File currentDirectory() {
+		PtySession current = session;
+		File directory = current != null ? current.currentDirectory() : null;
+		if (directory == null) {
+			directory = reportedDirectory != null ? reportedDirectory : workingDirectory;
+		}
+		return directory;
+	}
+
+	/**
+	 * @param path
+	 *            a path printed in the terminal, absolute, relative to the directory of the shell or
+	 *            to the home directory ({@code ~/...})
+	 * @return the file, or {@code null} if there is no such file
+	 */
+	static File resolveFile(String path, File directory) {
+		if (path == null || path.isBlank()) {
+			return null;
+		}
+		String name = path;
+		if (name.startsWith("~/") || name.startsWith("~\\")) { //$NON-NLS-1$ //$NON-NLS-2$
+			name = System.getProperty("user.home") + name.substring(1); //$NON-NLS-1$
+		}
+		File file = new File(name);
+		if (!file.isAbsolute()) {
+			if (directory == null) {
+				return null;
+			}
+			file = new File(directory, name);
+		}
+		try {
+			file = file.getCanonicalFile();
+		} catch (IOException e) {
+			return null;
+		}
+		return file.isFile() ? file : null;
+	}
+
+	/**
+	 * Opens a file the user clicked in the terminal in an Eclipse editor, at the given line and
+	 * column (1-based, 0 if unknown).
+	 */
+	void openFile(File file, int line, int column) {
+		try {
+			FileOpener.open(getSite().getPage(), file, line, column);
+		} catch (PartInitException | RuntimeException e) {
+			XtermPlugin.log("Could not open " + file, e); //$NON-NLS-1$
+		} catch (LinkageError e) {
+			// No IDE bundles: the system decides how to open the file.
+			Program.launch(file.getPath());
+		}
 	}
 
 	private interface JsFunction {
