@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BooleanSupplier;
 
+import org.eclipse.jface.action.MenuManager;
 import org.eclipse.jface.action.ToolBarManager;
 import org.eclipse.jface.util.IPropertyChangeListener;
 import org.eclipse.jface.viewers.ISelection;
@@ -40,6 +41,7 @@ final class TestWorkbench {
 	final Fake progress = new Fake();
 	final Fake workbench = new Fake();
 	final ToolBarManager toolBar = new ToolBarManager();
+	final MenuManager viewMenu = new MenuManager();
 	final List<IPartListener2> partListeners = new ArrayList<>();
 	final List<IPropertyChangeListener> themeListeners = new ArrayList<>();
 	final List<Shell> shells = new ArrayList<>();
@@ -67,7 +69,8 @@ final class TestWorkbench {
 				.as(IWorkbenchWindow.class);
 		return new Fake().on("getPage", args -> workbenchPage)
 				.on("getSecondaryId", args -> secondaryId)
-				.on("getActionBars", args -> new Fake().on("getToolBarManager", a -> toolBar).as(IActionBars.class))
+				.on("getActionBars", args -> new Fake().on("getToolBarManager", a -> toolBar)
+						.on("getMenuManager", a -> viewMenu).as(IActionBars.class))
 				.on("getWorkbenchWindow", args -> window)
 				.on("getService",
 						args -> args[0] == IWorkbenchSiteProgressService.class

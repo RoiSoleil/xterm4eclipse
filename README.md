@@ -41,6 +41,8 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
   editor, at the line and column given with it (`src/Foo.java:12:5`, `Foo.cs(12,5)`,
   `File "foo.py", line 12`). Relative paths are resolved from the directory of the shell. Ctrl+click on
   a URL opens it in the browser.
+- *Rename…* in the view menu gives the terminal a fixed name, kept after a restart (the titles set by
+  programs then only go to the tool tip; an empty name brings them back).
 - Preferences in *Window > Preferences > Xterm Terminal*.
 
 # Build
