@@ -50,6 +50,9 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
 - *Move to the Editor Area* / *Move to the Terminal View* (tool bar): a terminal moves between the
   view and the editor area with its running shell and its screen, full screen programs such as
   Claude Code or vim included. Terminals of the editor area also come back after a restart.
+- Find in the terminal (Ctrl+Shift+F, Cmd+F on macOS, or *Find…* in the view menu): every match is
+  highlighted, Enter / Shift+Enter go to the next / previous one, with case, whole word and regular
+  expression options.
 - Preferences in *Window > Preferences > Xterm Terminal*.
 
 # Build

@@ -26,6 +26,7 @@ import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.jface.action.Action;
 import org.eclipse.jface.action.IAction;
 import org.eclipse.jface.action.IMenuCreator;
+import org.eclipse.jface.action.IMenuManager;
 import org.eclipse.jface.action.IToolBarManager;
 import org.eclipse.jface.bindings.Binding;
 import org.eclipse.jface.bindings.keys.KeySequence;
@@ -602,6 +603,16 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		move.setImageDescriptor(ImageDescriptor.createFromFile(XtermView.class,
 				inEditor ? "/icons/move-to-view.png" : "/icons/move-to-editor.png")); //$NON-NLS-1$ //$NON-NLS-2$
 		toolBar.add(move);
+
+		IMenuManager viewMenu = getViewSite().getActionBars().getMenuManager();
+		Action find = new Action("Find\u2026\t" + (IS_MAC ? "\u2318F" : "Ctrl+Shift+F")) { //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+			@Override
+			public void run() {
+				setFocus();
+				browser.execute("window.xtermFind && xtermFind()"); //$NON-NLS-1$
+			}
+		};
+		viewMenu.add(find);
 	}
 
 	/** Called by the editor that embeds this terminal, before {@link #init}. */

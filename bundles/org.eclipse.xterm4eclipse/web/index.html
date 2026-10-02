@@ -6,10 +6,30 @@
 <style>
 html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
 #terminal { position: absolute; top: 0; bottom: 0; left: 4px; right: 0; }
+#find { position: absolute; top: 0; right: 16px; z-index: 5; display: none; align-items: center; gap: 2px;
+	padding: 3px 4px; font: 12px sans-serif; border-radius: 0 0 4px 4px; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4); }
+#find.open { display: flex; }
+#find input { width: 180px; font: inherit; padding: 2px 4px; border: 1px solid; border-radius: 2px; outline: none; }
+#find button { min-width: 22px; height: 22px; padding: 0 4px; font: inherit; border: 1px solid transparent;
+	border-radius: 3px; background: transparent; color: inherit; cursor: pointer; }
+#find button:hover { border-color: currentColor; }
+#find button.on { border-color: currentColor; font-weight: bold; }
+#find-count { min-width: 64px; padding: 0 4px; text-align: center; opacity: 0.8; }
+#find.missing input { border-color: #f14c4c; }
 </style>
 </head>
 <body>
 <div id="terminal"></div>
+<div id="find">
+<input id="find-input" type="text" placeholder="Find" spellcheck="false">
+<button id="find-case" title="Match Case">Aa</button>
+<button id="find-word" title="Match Whole Word">ab</button>
+<button id="find-regex" title="Use Regular Expression">.*</button>
+<span id="find-count"></span>
+<button id="find-previous" title="Previous Match (Shift+Enter)">&#8593;</button>
+<button id="find-next" title="Next Match (Enter)">&#8595;</button>
+<button id="find-close" title="Close (Escape)">&#215;</button>
+</div>
 <script>
 window.addEventListener("error", function (e) {
 	var pre = document.createElement("pre");
@@ -23,6 +43,7 @@ window.addEventListener("error", function (e) {
 <script src="addon-web-links.js"></script>
 <script src="addon-unicode11.js"></script>
 <script src="addon-serialize.js"></script>
+<script src="addon-search.js"></script>
 <script src="terminal.js"></script>
 </body>
 </html>
