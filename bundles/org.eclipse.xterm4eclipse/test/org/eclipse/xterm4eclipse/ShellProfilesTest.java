@@ -218,6 +218,32 @@ class ShellProfilesTest {
 		assertFalse(ShellProfiles.detect().isEmpty());
 	}
 
+	@Test
+	void programsAreNotTakenFromRelativeEntriesOfThePath() throws Exception {
+		Path bin = executable(temp.resolve("bin/claude")).getParent();
+		executable(bin.resolve("claude.exe"));
+		String relative = Path.of("").toAbsolutePath().relativize(bin).toString();
+		assertTrue(new File(relative, "claude").isFile(), "the relative entry does lead to the program");
+		Path shells = temp.resolve("none");
+		assertTrue(ShellProfiles.detect(host("Linux", Map.of("PATH", relative + "::."), shells)).stream()
+				.noneMatch(profile -> profile.name().equals("Claude")));
+		assertTrue(ShellProfiles.detect(host("Windows 11", Map.of("PATH", relative + ";;."), shells)).stream()
+				.noneMatch(profile -> profile.name().equals("Claude")));
+
+		ShellProfiles.Host windows = host("Windows 11", Map.of(), shells);
+		assertTrue(ShellProfiles.isAbsolute(windows, "C:\\Windows"));
+		assertTrue(ShellProfiles.isAbsolute(windows, "c:/tools"));
+		assertTrue(ShellProfiles.isAbsolute(windows, "\\\\server\\share"));
+		assertFalse(ShellProfiles.isAbsolute(windows, ""));
+		assertFalse(ShellProfiles.isAbsolute(windows, "."));
+		assertFalse(ShellProfiles.isAbsolute(windows, "C:tools"));
+		assertFalse(ShellProfiles.isAbsolute(windows, "bin"));
+		ShellProfiles.Host linux = host("Linux", Map.of(), shells);
+		assertTrue(ShellProfiles.isAbsolute(linux, "/usr/bin"));
+		assertFalse(ShellProfiles.isAbsolute(linux, ""));
+		assertFalse(ShellProfiles.isAbsolute(linux, "bin"));
+	}
+
 	private static Path executable(Path file) throws Exception {
 		Files.createDirectories(file.getParent());
 		Files.createFile(file);

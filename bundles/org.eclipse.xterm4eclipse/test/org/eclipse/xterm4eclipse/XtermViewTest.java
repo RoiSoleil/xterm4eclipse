@@ -58,6 +58,7 @@ import org.eclipse.swt.widgets.MenuItem;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.IEditorInput;
 import org.eclipse.ui.IEditorPart;
+import org.eclipse.ui.IEditorDescriptor;
 import org.eclipse.ui.ISelectionService;
 import org.eclipse.ui.IURIEditorInput;
 import org.eclipse.ui.ISources;
@@ -1137,6 +1138,49 @@ class XtermViewTest {
 
 	private static String findCount(XtermView view) {
 		return String.valueOf(view.browser.evaluate("return document.getElementById('find-count').textContent"));
+	}
+
+	@Test
+	void theTerminalPageCannotBeReplacedByAnotherPage() throws Exception {
+		XtermView view = open();
+		// Another page would get the java* functions, among them the keyboard of the shell.
+		view.browser.execute("window.location.href = 'file:///etc/'");
+		view.browser.execute("window.open('http://example.org/')");
+		pump(1000);
+		assertEquals(Boolean.TRUE, view.browser.evaluate("return typeof window.xtermWrite === 'function'"));
+		run(view, "echo still-$((1+2))", "still-3");
+
+		assertTrue(view.isOwnPage("about:blank"));
+		assertFalse(view.isOwnPage(null));
+		assertFalse(view.isOwnPage("http://example.org/"));
+		assertFalse(view.isOwnPage("file:///etc/passwd"));
+		assertFalse(view.isOwnPage("not a uri"));
+		String page = String.valueOf(view.browser.evaluate("return location.href"));
+		assertTrue(view.isOwnPage(page), page);
+		assertFalse(view.isOwnPage(page + "?other"));
+	}
+
+	@Test
+	void onlyWebLinksAreOpenedAndNoFileIsEverRun() {
+		assertTrue(XtermView.isWebLink("https://example.org/a?b=c"));
+		assertTrue(XtermView.isWebLink("HTTP://example.org"));
+		assertFalse(XtermView.isWebLink("file:///usr/bin/xterm"));
+		assertFalse(XtermView.isWebLink("javascript:alert(1)"));
+		assertFalse(XtermView.isWebLink("smb://server/share"));
+		assertFalse(XtermView.isWebLink("http:/no-host"));
+		assertFalse(XtermView.isWebLink("/usr/bin/xterm"));
+		assertFalse(XtermView.isWebLink("http://bad host/"));
+		assertFalse(XtermView.isWebLink(null));
+		assertEquals("&lt;b&gt;a&amp;b&lt;/b&gt;", XtermView.escapeHtml("<b>a&b</b>"));
+
+		// A file whose default editor is a program of the system opens in the text editor.
+		assertEquals(FileOpener.TEXT_EDITOR, FileOpener.editorId(null));
+		assertEquals(FileOpener.TEXT_EDITOR,
+				FileOpener.editorId(new Fake().on("isOpenExternal", args -> true).as(IEditorDescriptor.class)));
+		assertEquals(FileOpener.TEXT_EDITOR,
+				FileOpener.editorId(new Fake().on("isOpenInPlace", args -> true).as(IEditorDescriptor.class)));
+		assertEquals("org.eclipse.jdt.ui.CompilationUnitEditor", FileOpener.editorId(
+				new Fake().on("getId", args -> "org.eclipse.jdt.ui.CompilationUnitEditor").as(IEditorDescriptor.class)));
 	}
 
 	@Test
