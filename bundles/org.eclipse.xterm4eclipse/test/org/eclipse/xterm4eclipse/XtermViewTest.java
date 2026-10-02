@@ -443,7 +443,7 @@ class XtermViewTest {
 				return answer[0];
 			}
 		});
-		IAction rename = ((ActionContributionItem) workbench.viewMenu.getItems()[0]).getAction();
+		IAction rename = menuAction("Rename");
 		rename.run();
 		assertEquals("bash", view.getPartName(), "cancelled");
 		answer[0] = "  build server ";
@@ -1015,6 +1015,62 @@ class XtermViewTest {
 	private static void shiftEnter(XtermView view) {
 		view.browser.execute("document.querySelector('.xterm-helper-textarea').dispatchEvent(new KeyboardEvent('keydown', "
 				+ "{key: 'Enter', code: 'Enter', shiftKey: true, bubbles: true, cancelable: true}))");
+	}
+
+	@Test
+	void findBarHighlightsTheMatches() throws Exception {
+		XtermView view = open();
+		run(view, "echo nee''dle-1 nee''dle-2 NEE''DLE-3", "needle-1");
+		menuAction("Find").run();
+		await("find bar", () -> Boolean.TRUE.equals(view.browser.evaluate("return document.getElementById('find').classList.contains('open')")));
+		find(view, "needle");
+		await("matches counted", () -> findCount(view).equals("1 of 3") || findCount(view).equals("3 of 3"));
+		String first = findCount(view);
+		view.browser.execute("document.getElementById('find-input').dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}))");
+		await("next match", () -> !findCount(view).equals(first));
+
+		view.browser.execute("document.getElementById('find-case').click()");
+		await("case sensitive", () -> findCount(view).endsWith("of 2"));
+		find(view, "nomatch");
+		await("no match", () -> findCount(view).equals("No results"));
+		view.browser.execute("document.getElementById('find-regex').click()");
+		find(view, "NEE[D]LE-[0-9]");
+		await("regular expression", () -> findCount(view).equals("1 of 1"));
+		find(view, "(");
+		await("invalid regular expression", () -> findCount(view).equals("No results"));
+		find(view, "");
+		await("empty search", () -> findCount(view).isEmpty());
+
+		// Escape closes the bar and gives the keyboard back to the terminal.
+		view.browser.execute("document.getElementById('find-input').dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))");
+		assertEquals(Boolean.FALSE, view.browser.evaluate("return document.getElementById('find').classList.contains('open')"));
+		run(view, "echo still-typing", "still-typing\n");
+
+		// Ctrl+Shift+F in the terminal opens it again, it is not sent to the shell.
+		view.browser.execute("document.querySelector('.xterm-helper-textarea').dispatchEvent(new KeyboardEvent('keydown', "
+				+ "{key: 'F', code: 'KeyF', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true}))");
+		assertEquals(Boolean.TRUE, view.browser.evaluate("return document.getElementById('find').classList.contains('open')"));
+		view.browser.execute("document.getElementById('find-close').click()");
+		assertEquals(Boolean.FALSE, view.browser.evaluate("return document.getElementById('find').classList.contains('open')"));
+	}
+
+	/** The action of the view menu whose label starts with the text. */
+	private IAction menuAction(String label) {
+		for (var item : workbench.viewMenu.getItems()) {
+			if (item instanceof ActionContributionItem action && action.getAction().getText().startsWith(label)) {
+				return action.getAction();
+			}
+		}
+		throw new AssertionError("No " + label + " in the view menu");
+	}
+
+	private static void find(XtermView view, String text) {
+		view.browser.execute("var input = document.getElementById('find-input'); input.value = '" + text
+				+ "'; input.dispatchEvent(new Event('input'))");
+	}
+
+	private static String findCount(XtermView view) {
+		return String.valueOf(view.browser.evaluate("return document.getElementById('find-count').textContent"));
 	}
 
 	@Test

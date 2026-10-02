@@ -82,9 +82,17 @@
 				result.cursor = config.foreground;
 			}
 			document.body.style.background = result.background;
+			var bar = document.getElementById('find');
+			bar.style.background = result.background;
+			bar.style.color = result.foreground;
+			var input = document.getElementById('find-input');
+			input.style.background = result.background;
+			input.style.color = result.foreground;
+			input.style.borderColor = config.dark ? '#555555' : '#c8c8c8';
 			return result;
 		}
 		var theme = themeOf(cfg);
+		var currentDark = cfg.dark;
 
 		var term = new Terminal({
 			allowProposedApi: true,
@@ -100,6 +108,8 @@
 		term.unicode.activeVersion = '11';
 		var serializer = new SerializeAddon.SerializeAddon();
 		term.loadAddon(serializer);
+		var search = new SearchAddon.SearchAddon();
+		term.loadAddon(search);
 		term.loadAddon(new WebLinksAddon.WebLinksAddon(function (e, uri) {
 			if (e.ctrlKey || e.metaKey) {
 				javaOpenLink(uri);
@@ -179,6 +189,103 @@
 				+ (e.shiftKey ? 'SHIFT+' : '') + key;
 		}
 
+		// Find bar, as in VS Code: all the matches are highlighted, Enter / Shift+Enter go through them.
+		var find = document.getElementById('find');
+		var findInput = document.getElementById('find-input');
+		var findCount = document.getElementById('find-count');
+		var findOptions = { caseSensitive: false, wholeWord: false, regex: false };
+		function searchOptions() {
+			return {
+				caseSensitive: findOptions.caseSensitive,
+				wholeWord: findOptions.wholeWord,
+				regex: findOptions.regex,
+				decorations: currentDark
+					? { matchBackground: '#623315', activeMatchBackground: '#a0522d',
+						matchOverviewRuler: '#d186167e', activeMatchColorOverviewRuler: '#a0522d' }
+					: { matchBackground: '#f8d7a8', activeMatchBackground: '#f6a54a',
+						matchOverviewRuler: '#d186167e', activeMatchColorOverviewRuler: '#f6a54a' }
+			};
+		}
+		function findNext(backwards, incremental) {
+			var text = findInput.value;
+			if (!text) {
+				search.clearDecorations();
+				findCount.textContent = '';
+				find.classList.remove('missing');
+				return;
+			}
+			var options = searchOptions();
+			options.incremental = !!incremental;
+			var found;
+			try {
+				found = backwards ? search.findPrevious(text, options) : search.findNext(text, options);
+			} catch (invalidRegex) {
+				found = false;
+			}
+			find.classList.toggle('missing', !found);
+			if (!found) {
+				findCount.textContent = 'No results';
+			}
+		}
+		search.onDidChangeResults(function (e) {
+			if (!findInput.value) {
+				findCount.textContent = '';
+			} else if (e.resultCount === 0) {
+				findCount.textContent = 'No results';
+			} else if (e.resultIndex < 0) {
+				findCount.textContent = e.resultCount + '+ results';
+			} else {
+				findCount.textContent = (e.resultIndex + 1) + ' of ' + e.resultCount;
+			}
+		});
+		function openFind() {
+			var selection = term.getSelection();
+			if (selection && selection.indexOf('\n') < 0) {
+				findInput.value = selection;
+			}
+			find.classList.add('open');
+			findInput.focus();
+			findInput.select();
+			findNext(false, true);
+		}
+		function closeFind() {
+			find.classList.remove('open');
+			search.clearDecorations();
+			term.focus();
+		}
+		findInput.addEventListener('input', function () { findNext(false, true); });
+		findInput.addEventListener('keydown', function (e) {
+			if (e.key === 'Enter') {
+				findNext(e.shiftKey, false);
+				e.preventDefault();
+			} else if (e.key === 'Escape') {
+				closeFind();
+				e.preventDefault();
+			} else if (isFindKey(e)) {
+				findInput.select();
+				e.preventDefault();
+			}
+		});
+		[['find-case', 'caseSensitive'], ['find-word', 'wholeWord'], ['find-regex', 'regex']].forEach(function (toggle) {
+			var button = document.getElementById(toggle[0]);
+			button.addEventListener('click', function () {
+				findOptions[toggle[1]] = !findOptions[toggle[1]];
+				button.classList.toggle('on', findOptions[toggle[1]]);
+				// The add-on keeps the matches of an unchanged text: start the search over.
+				search.clearDecorations();
+				findInput.focus();
+				findNext(false, true);
+			});
+		});
+		document.getElementById('find-previous').addEventListener('click', function () { findNext(true, false); });
+		document.getElementById('find-next').addEventListener('click', function () { findNext(false, false); });
+		document.getElementById('find-close').addEventListener('click', closeFind);
+		// Ctrl+Shift+F (the Ctrl+F of the shell moves the cursor), Cmd+F on macOS.
+		function isFindKey(e) {
+			return e.code === 'KeyF' && !e.altKey
+				&& ((e.ctrlKey && e.shiftKey && !e.metaKey) || (cfg.os === 'mac' && e.metaKey && !e.ctrlKey && !e.shiftKey));
+		}
+
 		term.attachCustomKeyEventHandler(function (e) {
 			var down = e.type === 'keydown';
 			if (down && shortcuts.length) {
@@ -187,6 +294,20 @@
 					e.preventDefault();
 					return false;
 				}
+			}
+			if (isFindKey(e)) {
+				if (down) {
+					openFind();
+				}
+				e.preventDefault();
+				return false;
+			}
+			if (e.key === 'Escape' && find.classList.contains('open')) {
+				if (down) {
+					closeFind();
+				}
+				e.preventDefault();
+				return false;
 			}
 			// Shift+Enter inserts a newline in Claude Code and similar TUIs (same as Alt+Enter), and runs
 			// the command at the prompt of a shell: the Java side knows which program has the terminal.
@@ -362,6 +483,7 @@
 			return serializer.serialize({ excludeAltBuffer: false, excludeModes: false });
 		};
 		window.xtermSetTheme = function (config) {
+			currentDark = config.dark;
 			term.options.theme = themeOf(config);
 			term.options.fontFamily = config.fontFamily;
 			term.options.fontSize = config.fontSize;
@@ -369,7 +491,13 @@
 			doFit();
 		};
 		window.xtermTheme = function () { return term.options.theme; };
-		window.addEventListener('focus', function () { term.focus(); });
+		window.addEventListener('focus', function () {
+			if (find.classList.contains('open') && document.activeElement === findInput) {
+				return;
+			}
+			term.focus();
+		});
+		window.xtermFind = openFind;
 		window.xtermClear = function () { term.clear(); };
 		// "Run Selected Text in Terminal": pasted, so that a multi-line text is one block for the shell.
 		window.xtermRun = function (base64) {
