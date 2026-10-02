@@ -33,6 +33,8 @@ final class TestWorkbench {
 	static final Display DISPLAY = new Display();
 
 	final Fake page = new Fake();
+	/** The page of every view, the same object each time as in Eclipse. */
+	final IWorkbenchPage workbenchPage = page.as(IWorkbenchPage.class);
 	final Fake bindings = new Fake();
 	final Fake handlers = new Fake();
 	final Fake progress = new Fake();
@@ -63,7 +65,7 @@ final class TestWorkbench {
 	IViewSite site(String secondaryId) {
 		IWorkbenchWindow window = new Fake().on("getWorkbench", args -> workbench.as(IWorkbench.class))
 				.as(IWorkbenchWindow.class);
-		return new Fake().on("getPage", args -> page.as(IWorkbenchPage.class))
+		return new Fake().on("getPage", args -> workbenchPage)
 				.on("getSecondaryId", args -> secondaryId)
 				.on("getActionBars", args -> new Fake().on("getToolBarManager", a -> toolBar).as(IActionBars.class))
 				.on("getWorkbenchWindow", args -> window)

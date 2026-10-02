@@ -103,6 +103,10 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	/** Directory requested by "Show in Xterm" for the view that is about to be created. */
 	private static File nextDirectory;
 	private static long lastSecondaryId;
+	/** Text that "Run Selected Text in Terminal" sends to the view that is about to be created. */
+	private static String nextInput;
+	/** The terminal the user worked in last, where "Run Selected Text in Terminal" runs the text. */
+	private static XtermView lastActive;
 
 	Browser browser;
 	private Display display;
@@ -147,6 +151,8 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	private File workingDirectory;
 	/** Directory announced by the shell itself through an escape sequence, if it does so. */
 	private File reportedDirectory;
+	/** Text to run once the shell has started. */
+	private String pendingInput;
 	private int cols = 80;
 	private int rows = 24;
 	private boolean keyFilterDisabled;
@@ -165,6 +171,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		@Override
 		public void partActivated(IWorkbenchPartReference ref) {
 			if (ref.getPart(false) == XtermView.this) {
+				lastActive = XtermView.this;
 				setKeyFilterEnabled(false);
 				clearDone();
 			}
@@ -184,6 +191,8 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		// Opened by the user: the state that Eclipse may still hold for this view from an earlier
 		// session must not override the shell and directory just chosen.
 		boolean requested = nextCommandLine != null;
+		pendingInput = nextInput;
+		nextInput = null;
 		if (requested) {
 			commandLine = nextCommandLine;
 			nextCommandLine = null;
@@ -302,6 +311,12 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		function("javaStart", args -> { //$NON-NLS-1$
 			updateSize(args);
 			startSession();
+			if (pendingInput != null) {
+				String text = pendingInput;
+				pendingInput = null;
+				// Not from within the call: it runs a script in the page.
+				display.asyncExec(() -> send(text));
+			}
 			return null;
 		});
 		function("javaResize", args -> { //$NON-NLS-1$
@@ -474,6 +489,36 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			nextCommandLine = null;
 			nextDirectory = null;
 		}
+	}
+
+	/**
+	 * Runs a command line in the terminal the user worked in last, or in a new terminal if there is
+	 * none in the page.
+	 */
+	static void run(IWorkbenchPage page, String text) throws PartInitException {
+		XtermView target = lastActive;
+		if (target != null && target.getSite().getPage() == page && target.browser != null
+				&& !target.browser.isDisposed()) {
+			page.bringToTop(target);
+			target.send(text);
+			return;
+		}
+		nextInput = text;
+		try {
+			open(page, ShellProfiles.defaultCommandLine());
+		} finally {
+			nextInput = null;
+		}
+	}
+
+	/** Types the text in the terminal as a paste, then Enter to run it. */
+	void send(String text) {
+		if (browser.isDisposed()) {
+			return;
+		}
+		String command = text.replaceAll("[\\r\\n]+$", ""); //$NON-NLS-1$ //$NON-NLS-2$
+		browser.execute("xtermRun('" //$NON-NLS-1$
+				+ Base64.getEncoder().encodeToString(command.getBytes(StandardCharsets.UTF_8)) + "')"); //$NON-NLS-1$
 	}
 
 	/** A new id for each terminal, even when several are opened within the same millisecond. */
@@ -1070,6 +1115,9 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	@Override
 	public void dispose() {
 		getSite().getPage().removePartListener(partListener);
+		if (lastActive == this) {
+			lastActive = null;
+		}
 		workbench().getThemeManager().removePropertyChangeListener(themeListener);
 		JFaceResources.getFontRegistry().removeListener(themeListener);
 		XtermPlugin.preferences().removePropertyChangeListener(themeListener);

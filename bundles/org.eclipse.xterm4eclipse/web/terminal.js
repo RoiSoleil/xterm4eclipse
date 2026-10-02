@@ -278,6 +278,16 @@
 		window.xtermTheme = function () { return term.options.theme; };
 		window.addEventListener('focus', function () { term.focus(); });
 		window.xtermClear = function () { term.clear(); };
+		// "Run Selected Text in Terminal": pasted, so that a multi-line text is one block for the shell.
+		window.xtermRun = function (base64) {
+			var binary = atob(base64);
+			var bytes = new Uint8Array(binary.length);
+			for (var i = 0; i < binary.length; i++) {
+				bytes[i] = binary.charCodeAt(i);
+			}
+			term.paste(new TextDecoder('utf-8').decode(bytes));
+			javaInput('\r');
+		};
 
 		// The view keeps the browser hidden until now, to avoid a white flash while loading. A hidden
 		// browser may have no size yet: fit again once it is shown.
