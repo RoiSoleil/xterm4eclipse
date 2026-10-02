@@ -21,20 +21,30 @@ final class ShellProfiles {
 
 		/** The icon shown in front of the shell in the menus, as a resource of the plug-in. */
 		String icon() {
-			String kind;
-			if (name.equals("Git Bash")) { //$NON-NLS-1$
-				kind = "gitbash"; //$NON-NLS-1$
-			} else {
-				kind = switch (displayName(commandLine).toLowerCase()) {
-				case "bash", "zsh", "fish", "cmd" -> displayName(commandLine).toLowerCase(); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
-				case "pwsh", "powershell" -> "powershell"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-				case "wsl" -> "linux"; //$NON-NLS-1$ //$NON-NLS-2$
-				case "claude" -> "claude"; //$NON-NLS-1$ //$NON-NLS-2$
-				default -> "shell"; //$NON-NLS-1$
-				};
-			}
-			return "icons/shells/" + kind + ".png"; //$NON-NLS-1$ //$NON-NLS-2$
+			return name.equals("Git Bash") ? "icons/shells/gitbash.png" : iconOf(commandLine); //$NON-NLS-1$ //$NON-NLS-2$
 		}
+	}
+
+	/**
+	 * The icon of the shell or program a command line runs, as a resource of the plug-in: shown in the
+	 * menus and in the tab of the terminal.
+	 */
+	static String iconOf(String commandLine) {
+		String[] arguments = parse(commandLine);
+		String kind;
+		// Git for Windows: its bash.exe is in Git/bin or Git/usr/bin.
+		if (arguments.length > 0 && arguments[0].replace('\\', '/').toLowerCase().matches(".*/git/(usr/)?bin/bash\\.exe")) { //$NON-NLS-1$
+			kind = "gitbash"; //$NON-NLS-1$
+		} else {
+			String program = displayName(commandLine).toLowerCase();
+			kind = switch (program) {
+			case "bash", "zsh", "fish", "cmd", "claude" -> program; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+			case "pwsh", "powershell" -> "powershell"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+			case "wsl" -> "linux"; //$NON-NLS-1$ //$NON-NLS-2$
+			default -> "shell"; //$NON-NLS-1$
+			};
+		}
+		return "icons/shells/" + kind + ".png"; //$NON-NLS-1$ //$NON-NLS-2$
 	}
 
 	/** The machine the shells are looked up on; a parameter so that every platform can be tested. */

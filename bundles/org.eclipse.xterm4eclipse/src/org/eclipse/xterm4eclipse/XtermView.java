@@ -36,6 +36,8 @@ import org.eclipse.jface.dialogs.InputDialog;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.resource.ImageDescriptor;
 import org.eclipse.jface.resource.JFaceResources;
+import org.eclipse.jface.viewers.DecorationOverlayIcon;
+import org.eclipse.jface.viewers.IDecoration;
 import org.eclipse.jface.viewers.ISelection;
 import org.eclipse.jface.viewers.IStructuredSelection;
 import org.eclipse.jface.window.Window;
@@ -123,16 +125,17 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	/** What the tab icon tells about the shell. */
 	private enum Activity {
 		/** The shell waits at its prompt. */
-		IDLE("icons/xterm.png"), //$NON-NLS-1$
+		IDLE(null),
 		/** A command runs in the foreground. */
-		RUNNING("icons/xterm-running.png"), //$NON-NLS-1$
+		RUNNING("icons/ovr-running.png"), //$NON-NLS-1$
 		/** A command has finished, or a program asked for attention, and the user has not looked yet. */
-		DONE("icons/xterm-done.png"); //$NON-NLS-1$
+		DONE("icons/ovr-done.png"); //$NON-NLS-1$
 
-		final String icon;
+		/** The badge drawn over the icon of the shell, {@code null} for none. */
+		final String overlay;
 
-		Activity(String icon) {
-			this.icon = icon;
+		Activity(String overlay) {
+			this.overlay = overlay;
 		}
 	}
 
@@ -314,10 +317,16 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		}
 
 		createActions();
+		// The tab shows the icon of the shell or program (bash, PowerShell, Claude Code...), with a badge
+		// for what it does.
+		ImageDescriptor shellIcon = ImageDescriptor.createFromFile(XtermView.class, '/' + ShellProfiles.iconOf(commandLine));
 		for (Activity value : Activity.values()) {
-			activityImages[value.ordinal()] = ImageDescriptor.createFromFile(XtermView.class, '/' + value.icon)
-					.createImage();
+			ImageDescriptor icon = value.overlay == null ? shellIcon
+					: new DecorationOverlayIcon(shellIcon,
+							ImageDescriptor.createFromFile(XtermView.class, '/' + value.overlay), IDecoration.BOTTOM_RIGHT);
+			activityImages[value.ordinal()] = icon.createImage();
 		}
+		setTitleImage(activityImages[activity.ordinal()]);
 		activityPoller = Executors.newSingleThreadScheduledExecutor(runnable -> {
 			Thread thread = new Thread(runnable, "Xterm activity poller"); //$NON-NLS-1$
 			thread.setDaemon(true);
@@ -562,7 +571,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			}
 		};
 		newTerminal.setToolTipText("New Terminal (use the arrow to choose a shell)"); //$NON-NLS-1$
-		newTerminal.setImageDescriptor(ImageDescriptor.createFromFile(XtermView.class, '/' + Activity.IDLE.icon));
+		newTerminal.setImageDescriptor(ImageDescriptor.createFromFile(XtermView.class, "/icons/xterm.png"));
 		newTerminal.setMenuCreator(new ShellMenu());
 		toolBar.add(newTerminal);
 

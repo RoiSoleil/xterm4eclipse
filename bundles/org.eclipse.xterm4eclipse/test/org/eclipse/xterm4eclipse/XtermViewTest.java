@@ -50,6 +50,7 @@ import org.eclipse.swt.dnd.TextTransfer;
 import org.eclipse.swt.dnd.Transfer;
 import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.Image;
+import org.eclipse.swt.graphics.ImageData;
 import org.eclipse.swt.graphics.RGB;
 import org.eclipse.swt.widgets.Event;
 import org.eclipse.swt.widgets.Menu;
@@ -106,6 +107,8 @@ class XtermViewTest {
 		});
 		workbench.open(view, null, null);
 		await("shell prompt", () -> screen(view).contains("$"));
+		// The icon of the shell, set when the view is created: the tests follow the changes.
+		titleImages.clear();
 		return view;
 	}
 
@@ -418,6 +421,36 @@ class XtermViewTest {
 		assertEquals(4, workbench.bindings.count("setKeyFilterEnabled"));
 		assertTrue(workbench.partListeners.isEmpty());
 		assertTrue(workbench.themeListeners.isEmpty());
+	}
+
+	@Test
+	void tabShowsTheIconOfTheShellWithABadgeForItsActivity() throws Exception {
+		XtermView view = open();
+		Image idle = view.getTitleImage();
+		assertImage(XtermPlugin.image("icons/shells/bash.png"), idle, true);
+		type(view, "sleep 2\r");
+		await("running badge", () -> view.getTitleImage() != idle);
+		Image running = view.getTitleImage();
+		assertImage(idle, running, false);
+		assertEquals(idle.getBounds(), running.getBounds(), "same size, the badge is drawn over the icon");
+		await("done badge", () -> view.getTitleImage() != running);
+		assertImage(running, view.getTitleImage(), false);
+
+		// Other programs show their own icon, for example Claude Code or PowerShell.
+		assertEquals("icons/shells/claude.png", ShellProfiles.iconOf("/bin/zsh -l -i -c claude"));
+		assertEquals("icons/shells/powershell.png", ShellProfiles.iconOf("\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\""));
+		assertEquals("icons/shells/gitbash.png", ShellProfiles.iconOf("\"C:\\Program Files\\Git\\bin\\bash.exe\" --login -i"));
+		assertEquals("icons/shells/gitbash.png", ShellProfiles.iconOf("C:/Git/usr/bin/bash.exe"));
+		assertEquals("icons/shells/bash.png", ShellProfiles.iconOf("/usr/bin/bash -l"));
+		assertEquals("icons/shells/shell.png", ShellProfiles.iconOf("/usr/bin/nu"));
+		assertEquals("icons/shells/shell.png", ShellProfiles.iconOf(""));
+	}
+
+	private static void assertImage(Image expected, Image actual, boolean same) {
+		ImageData a = expected.getImageData();
+		ImageData b = actual.getImageData();
+		boolean equal = a.width == b.width && a.height == b.height && java.util.Arrays.equals(a.data, b.data);
+		assertEquals(same, equal, same ? "same picture" : "different pictures");
 	}
 
 	@Test

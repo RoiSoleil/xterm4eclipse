@@ -27,8 +27,9 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
 - New terminals start in the project of the selected resource, or else of the file of the active
   editor.
 - Toolbar button and Ctrl+Alt+Shift+X to open a terminal.
-- Tab icon showing a running command (orange dot) and a finished command or a program asking for
-  attention through the bell or an OSC 9 / OSC 777 notification (green dot).
+- The tab shows the icon of the shell or program it runs (bash, zsh, fish, PowerShell, cmd, Git Bash,
+  WSL, Claude Code), with a badge for a running command (orange dot) and for a finished command or a
+  program asking for attention through the bell or an OSC 9 / OSC 777 notification (green dot).
 - After a restart of Eclipse each terminal reopens with the same shell, directory and screen content.
 - `exit` closes the view.
 - Shift+Enter inserts a newline in Claude Code (and runs the command at a shell prompt). Copy/paste:
