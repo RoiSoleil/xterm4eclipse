@@ -23,6 +23,8 @@ import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.Adapters;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.e4.ui.model.application.ui.basic.MPart;
+import org.eclipse.e4.ui.workbench.IPresentationEngine;
 import org.eclipse.jface.action.Action;
 import org.eclipse.jface.action.IAction;
 import org.eclipse.jface.action.IMenuCreator;
@@ -340,6 +342,8 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			activityImages[value.ordinal()] = icon.createImage();
 		}
 		setTitleImage(activityImages[activity.ordinal()]);
+		// After the workbench has set up the tab, which gives it the icon of the part declaration.
+		display.asyncExec(this::showTabIcon);
 		activityPoller = Executors.newSingleThreadScheduledExecutor(runnable -> {
 			Thread thread = new Thread(runnable, "Xterm activity poller"); //$NON-NLS-1$
 			thread.setDaemon(true);
@@ -704,6 +708,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		}
 		TerminalTransfer moving = new TerminalTransfer(alive ? current : null, screen, cols, rows, commandLine,
 				currentDirectory(), customName, sessionStart);
+		moving.attention = activity == Activity.DONE;
 		if (alive) {
 			// From now on the shell belongs to the transfer: closing this part must not end it.
 			session = null;
@@ -1112,6 +1117,41 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		}
 		activity = newActivity;
 		setTitleImage(activityImages[newActivity.ordinal()]);
+		showTabIcon();
+	}
+
+	/**
+	 * Gives the tab of the part (view or editor) the icon of the shell in the model of the workbench:
+	 * the icon it shows before the part is created (a tab in the background after a restart), keeps in
+	 * the layout, and falls back to; and the current image, whatever the order in which the workbench
+	 * sets up its parts.
+	 */
+	private void showTabIcon() {
+		if (browser == null || browser.isDisposed()) {
+			return;
+		}
+		try {
+			TabIcons.show(getSite(), "platform:/plugin/" + XtermPlugin.ID + '/' + ShellProfiles.iconOf(commandLine), //$NON-NLS-1$
+					activityImages[activity.ordinal()]);
+		} catch (LinkageError | RuntimeException e) {
+			// Not in an Eclipse 4 workbench: the title image is all there is.
+		}
+	}
+
+	/** Isolated so that the view still loads without the Eclipse 4 model bundles. */
+	private static final class TabIcons {
+		static void show(org.eclipse.ui.IWorkbenchPartSite site, String iconUri, Image image) {
+			Object service = site.getService((Class<?>) MPart.class);
+			if (!(service instanceof MPart part)) {
+				return;
+			}
+			if (!iconUri.equals(part.getIconURI())) {
+				part.setIconURI(iconUri);
+			}
+			if (image != null && !image.isDisposed()) {
+				part.getTransientData().put(IPresentationEngine.OVERRIDE_ICON_IMAGE_KEY, image);
+			}
+		}
 	}
 
 	/**
@@ -1361,6 +1401,17 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			session.write(earlyInput.toByteArray());
 		}
 		earlyInput.reset();
+		// The tab tells at once what the old one told: a command running, or done and not seen yet.
+		boolean busy = session != null && session.isBusy();
+		lastBusy = busy;
+		if (busy) {
+			firePropertyChange(IWorkbenchPartConstants.PROP_DIRTY);
+		}
+		if (moving.attention) {
+			setActivity(Activity.DONE);
+		} else if (busy) {
+			setActivity(Activity.RUNNING);
+		}
 	}
 
 	private void input(String data, boolean binary) {

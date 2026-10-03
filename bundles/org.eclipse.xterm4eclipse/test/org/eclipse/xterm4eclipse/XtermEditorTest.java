@@ -3,6 +3,7 @@ package org.eclipse.xterm4eclipse;
 import static org.eclipse.xterm4eclipse.TestWorkbench.await;
 import static org.eclipse.xterm4eclipse.TestWorkbench.screen;
 import static org.eclipse.xterm4eclipse.TestWorkbench.type;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -21,6 +22,9 @@ import org.eclipse.jface.action.ActionContributionItem;
 import org.eclipse.jface.action.IAction;
 import org.eclipse.jface.action.IContributionItem;
 import org.eclipse.jface.action.IContributionManager;
+import org.eclipse.e4.ui.workbench.IPresentationEngine;
+import org.eclipse.swt.graphics.Image;
+import org.eclipse.swt.graphics.ImageData;
 import org.eclipse.ui.IActionBars;
 import org.eclipse.ui.IEditorInput;
 import org.eclipse.ui.IWorkbenchPartConstants;
@@ -151,6 +155,59 @@ class XtermEditorTest {
 		// exit closes the part the terminal is in.
 		type(back, "exit\r");
 		await("view closed", () -> !workbench.views.contains(back));
+	}
+
+	@Test
+	void tabKeepsTheIconOfTheShellAndItsBadgeWhenTheTerminalMoves() throws Exception {
+		XtermView view = openView();
+		Image idle = view.getTitleImage();
+		// A program asked for attention: the green badge.
+		run(view, "printf '\\a'; echo rang", "rang\n");
+		await("badge", () -> view.getTitleImage() != idle);
+		ImageData done = view.getTitleImage().getImageData();
+
+		action(workbench.toolBar, "Move to the Editor Area").run();
+		XtermEditor editor = editors.get(0);
+		await("moved", () -> screen(editor.terminal()).contains("rang"));
+		assertArrayEquals(done.data, editor.getTitleImage().getImageData().data, "still marked");
+		TestWorkbench.TabModel tab = workbench.tabs.get(workbench.tabs.size() - 1);
+		await("icon in the model of the editor tab",
+				() -> "platform:/plugin/org.eclipse.xterm4eclipse/icons/shells/bash.png".equals(tab.iconUri));
+		assertSame(editor.getTitleImage(), tab.transientData.get(IPresentationEngine.OVERRIDE_ICON_IMAGE_KEY));
+		// The lists of editors show the icon of the shell too.
+		assertArrayEquals(XtermPlugin.image("icons/shells/bash.png").getImageData().data,
+				editor.getEditorInput().getImageDescriptor().getImageData(100).data);
+
+		// A running command: the orange badge at once, and the editor is marked dirty.
+		type(editor.terminal(), "sleep 30\r");
+		await("running", editor::isDirty);
+		byte[] plain = XtermPlugin.image("icons/shells/bash.png").getImageData().data;
+		await("running badge", () -> {
+			byte[] shown = editor.getTitleImage().getImageData().data;
+			return !java.util.Arrays.equals(done.data, shown) && !java.util.Arrays.equals(plain, shown);
+		});
+		ImageData running = editor.getTitleImage().getImageData();
+		List<Integer> properties = new ArrayList<>();
+		editorAction(editor, "Move to the Terminal View").run();
+		XtermView back = views.get(0);
+		back.addPropertyListener((source, property) -> properties.add(property));
+		await("moved back", () -> back.isDirty());
+		assertArrayEquals(running.data, back.getTitleImage().getImageData().data, "still running");
+		type(back, "\u0003");
+		await("done after the command", () -> !java.util.Arrays.equals(running.data, back.getTitleImage().getImageData().data));
+
+		// An input restored after a restart knows its shell for its icon; without one, the Xterm icon.
+		XMLMemento memento = XMLMemento.createWriteRoot("editor");
+		memento.putString("id", "e1");
+		memento.putString("shell", "/usr/bin/zsh -l");
+		assertArrayEquals(XtermPlugin.image("icons/shells/zsh.png").getImageData().data,
+				((XtermEditorInput) new XtermEditorInputFactory().createElement(memento)).getImageDescriptor()
+						.getImageData(100).data);
+		XMLMemento noShell = XMLMemento.createWriteRoot("editor");
+		noShell.putString("id", "e2");
+		assertArrayEquals(XtermPlugin.image("icons/xterm.png").getImageData().data,
+				((XtermEditorInput) new XtermEditorInputFactory().createElement(noShell)).getImageDescriptor()
+						.getImageData(100).data);
 	}
 
 	@Test
