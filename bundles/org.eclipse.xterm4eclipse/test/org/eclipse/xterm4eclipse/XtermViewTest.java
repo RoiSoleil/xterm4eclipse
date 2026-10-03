@@ -1606,6 +1606,32 @@ class XtermViewTest {
 	}
 
 	@Test
+	void pathsAndTitlesOfTheShellsOfWindowsAreUnderstood() {
+		// Directories announced by the bash of Git for Windows, MSYS2 or Cygwin.
+		String gitBash = "\"C:\\Program Files\\Git\\usr\\bin\\bash.exe\" --login -i";
+		assertEquals("C:\\Users\\me", XtermView.windowsPath("/c/Users/me", gitBash));
+		assertEquals("D:\\a b", XtermView.windowsPath("/cygdrive/d/a b", null));
+		assertEquals("C:\\", XtermView.windowsPath("/c", gitBash));
+		assertEquals("C:\\Users", XtermView.windowsPath("\\c\\Users", null), "as a File of Windows gives it");
+		assertEquals("C:\\Program Files\\Git\\usr\\share", XtermView.windowsPath("/usr/share", gitBash));
+		assertEquals("C:\\Git\\etc", XtermView.windowsPath("/etc", "C:/Git/bin/bash.exe"));
+		assertEquals("/usr/share", XtermView.windowsPath("/usr/share", "cmd.exe"), "not a bash of Windows");
+		assertEquals("C:\\Users\\me", XtermView.windowsPath("C:\\Users\\me", gitBash));
+		assertEquals("\\\\server\\share", XtermView.windowsPath("\\\\server\\share", gitBash));
+
+		// The pseudo console of Windows names the window after the program: not a title.
+		assertTrue(XtermView.isProgramPath("C:\\Program Files\\Git\\usr\\bin\\bash.exe", gitBash));
+		assertTrue(XtermView.isProgramPath("C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+				"powershell.exe -NoLogo"));
+		assertTrue(XtermView.isProgramPath("C:\\Windows\\system32\\cmd.exe ", "cmd.exe /c claude.cmd"));
+		assertFalse(XtermView.isProgramPath("bash.exe", "bash.exe"), "not a path");
+		assertFalse(XtermView.isProgramPath("MINGW64:/c/Users/me", gitBash));
+		assertFalse(XtermView.isProgramPath("/usr/bin/vim", "/bin/bash"));
+		assertFalse(XtermView.isProgramPath("C:\\x\\bash.exe - vim", gitBash));
+		assertFalse(XtermView.isProgramPath("/bin/bash", ""));
+	}
+
+	@Test
 	void droppedPathsAreQuotedForTheShell() {
 		assertEquals("/usr/share '/tmp/a b' ", XtermView.quotePaths(List.of("/usr/share", "/tmp/a b"), "/bin/bash"));
 		assertEquals("'it'\\''s' ", XtermView.quotePaths(List.of("it's"), "zsh -l"));

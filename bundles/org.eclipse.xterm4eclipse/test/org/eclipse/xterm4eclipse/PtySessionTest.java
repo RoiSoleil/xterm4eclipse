@@ -170,4 +170,21 @@ class PtySessionTest implements PtySession.Listener {
 		assertTrue(powershell.stream().noneMatch(entry -> entry.startsWith("PROMPT=")));
 		assertTrue(powershell.contains("CHERE_INVOKING=1"), "Git Bash stays in the directory it is started in");
 	}
+
+	@Test
+	void bashOfWindowsAnnouncesItsDirectoryBeforeEachPrompt() {
+		String function = PtySession.PROMPT_FUNCTION_VARIABLE
+				+ "=() { local status=$?; printf '\\e]9;9;%s\\e\\\\' \"$PWD\"; return $status; }";
+		List<String> bash = List.of(PtySession.environment(
+				new String[] {"C:\\Program Files\\Git\\usr\\bin\\bash.exe", "--login"}, "Windows 11", Map.of()));
+		assertTrue(bash.contains(function), bash.toString());
+		assertTrue(bash.contains("PROMPT_COMMAND=__xterm4eclipse_prompt"));
+		// Before the one of the user, which still runs.
+		List<String> own = List.of(PtySession.environment(new String[] {"bash"}, "Windows 11",
+				Map.of("PROMPT_COMMAND", "history -a")));
+		assertTrue(own.contains("PROMPT_COMMAND=__xterm4eclipse_prompt; history -a"), own.toString());
+		// Elsewhere the directory is read from the system.
+		List<String> linux = List.of(PtySession.environment(new String[] {"/bin/bash"}, "Linux", Map.of()));
+		assertTrue(linux.stream().noneMatch(entry -> entry.startsWith("PROMPT_COMMAND=") || entry.startsWith("BASH_FUNC_")));
+	}
 }

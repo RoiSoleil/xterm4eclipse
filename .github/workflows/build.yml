@@ -78,10 +78,6 @@ jobs:
             sudo apt-get install -y xvfb libwebkit2gtk-4.1-0 libgtk-3-0
             # The sandbox of WebKitGTK needs user namespaces, which the runner image restricts.
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-      -  name: Diagnose (temporary)
-         if: runner.os == 'Windows'
-         timeout-minutes: 5
-         run: XTERM_DIAGNOSE=1 ECLIPSE_HOME="$HOME/${{ matrix.home }}" ./test.sh --include-classname '.*PtyDiagnosticsTest' || true
       -  name: Test
          timeout-minutes: 30
          env:

@@ -448,6 +448,9 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		});
 		function("javaDirectory", args -> { //$NON-NLS-1$
 			File directory = parseDirectory((String) args[0]);
+			if (directory != null && IS_WINDOWS) {
+				directory = new File(windowsPath(directory.getPath(), commandLine));
+			}
 			if (directory != null && directory.isDirectory()) {
 				reportedDirectory = directory;
 			}
@@ -480,7 +483,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		});
 		function("javaTitle", args -> { //$NON-NLS-1$
 			String title = (String) args[0];
-			if (title != null && !title.isBlank()) {
+			if (title != null && !title.isBlank() && !isProgramPath(title, commandLine)) {
 				setTitleToolTip(title);
 				if (customName != null) {
 					return null;
@@ -1201,6 +1204,62 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			}
 		}
 		return path == null || path.isEmpty() ? null : new File(path);
+	}
+
+	private static final Pattern MSYS_DRIVE = Pattern.compile("[\\\\/](?:cygdrive[\\\\/])?([A-Za-z])([\\\\/].*)?"); //$NON-NLS-1$
+
+	/**
+	 * A path announced by the bash of Git for Windows, MSYS2 or Cygwin, as Windows names it:
+	 * /c/Users/me and /cygdrive/c/Users/me are C:\Users\me, and /usr is in the installation of the
+	 * shell.
+	 *
+	 * @return the path, unchanged when it is not such a path
+	 */
+	static String windowsPath(String path, String commandLine) {
+		Matcher drive = MSYS_DRIVE.matcher(path);
+		if (drive.matches()) {
+			String rest = drive.group(2) == null ? "\\" : drive.group(2).replace('/', '\\'); //$NON-NLS-1$
+			return Character.toUpperCase(drive.group(1).charAt(0)) + ":" + rest; //$NON-NLS-1$
+		}
+		if (path.matches("[\\\\/][^\\\\/].*")) { //$NON-NLS-1$
+			String root = msysRoot(commandLine);
+			if (root != null) {
+				return root + path.replace('/', '\\');
+			}
+		}
+		return path;
+	}
+
+	/** The installation of a bash of Windows: C:\Program Files\Git for its usr\bin\bash.exe. */
+	private static String msysRoot(String commandLine) {
+		String[] arguments = ShellProfiles.parse(commandLine == null ? "" : commandLine); //$NON-NLS-1$
+		// Not File: the paths of Windows, on any system.
+		String[] parts = arguments.length == 0 ? new String[0] : arguments[0].split("[\\\\/]"); //$NON-NLS-1$
+		int bin = parts.length - 2;
+		if (bin < 1 || !parts[bin].equalsIgnoreCase("bin")) { //$NON-NLS-1$
+			return null;
+		}
+		int end = bin > 1 && parts[bin - 1].equalsIgnoreCase("usr") ? bin - 1 : bin; //$NON-NLS-1$
+		return String.join("\\", java.util.Arrays.copyOf(parts, end)); //$NON-NLS-1$
+	}
+
+	/**
+	 * @return {@code true} if the title is the path of the program the terminal runs: the pseudo
+	 *         console of Windows names its window so, which the tab already says better
+	 */
+	static boolean isProgramPath(String title, String commandLine) {
+		String[] arguments = ShellProfiles.parse(commandLine == null ? "" : commandLine); //$NON-NLS-1$
+		String path = title.strip();
+		if (arguments.length == 0 || !path.matches("([A-Za-z]:)?[\\\\/].*")) { //$NON-NLS-1$
+			return false;
+		}
+		String program = fileName(arguments[0]);
+		String name = fileName(path);
+		return name.equalsIgnoreCase(program) || name.equalsIgnoreCase(program + ".exe"); //$NON-NLS-1$
+	}
+
+	private static String fileName(String path) {
+		return path.substring(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1);
 	}
 
 	/**
