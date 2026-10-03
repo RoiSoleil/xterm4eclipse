@@ -99,6 +99,8 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	private static final String FOCUS_OUT = "\u001b[O"; //$NON-NLS-1$
 	/** Output within this delay after a key press is its echo. */
 	private static final long ECHO_MILLIS = 1000;
+	/** A command must run at least this long to show as running, and its end to be signalled. */
+	private static final long RUNNING_MILLIS = 500;
 	/** Output must flow at least this long to count as work whose end is worth signalling. */
 	private static final long WORK_MILLIS = 2000;
 	/** Silence after which the work of a foreground program is considered finished. */
@@ -149,6 +151,10 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	private Activity activity = Activity.IDLE;
 	private ScheduledExecutorService activityPoller;
 	private volatile boolean lastBusy;
+	/** When the poller saw the current command start, or 0. */
+	private volatile long busySince;
+	/** The current command has run for {@link #RUNNING_MILLIS} at least. */
+	private volatile boolean longRunning;
 
 	/**
 	 * A program that stays in the foreground, such as Claude Code, never "finishes": the end of its
@@ -1045,17 +1051,31 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			if (display.isDisposed()) {
 				return;
 			}
-			if (busy != lastBusy) {
-				lastBusy = busy;
+			long now = System.currentTimeMillis();
+			if (!busy) {
+				busySince = 0;
+			} else if (busySince == 0) {
+				busySince = now;
+			}
+			// A command shows as running, and its end is signalled, once it has run for a while: not
+			// for every quick command that a poll happens to see.
+			boolean running = busy && now - busySince >= RUNNING_MILLIS;
+			boolean busyChanged = busy != lastBusy;
+			boolean runningChanged = running != longRunning;
+			lastBusy = busy;
+			longRunning = running;
+			if (busyChanged || runningChanged) {
 				display.asyncExec(() -> {
 					if (browser.isDisposed()) {
 						return;
 					}
 					// A running command makes the view "dirty", so that closing it asks first.
-					firePropertyChange(IWorkbenchPartConstants.PROP_DIRTY);
-					if (busy) {
+					if (busyChanged) {
+						firePropertyChange(IWorkbenchPartConstants.PROP_DIRTY);
+					}
+					if (runningChanged && running) {
 						setActivity(Activity.RUNNING);
-					} else if (activity == Activity.RUNNING) {
+					} else if (runningChanged && activity == Activity.RUNNING) {
 						signalDone();
 					}
 				});
@@ -1116,7 +1136,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	/** The user has seen the mark: back to the icon that tells what the shell is doing. */
 	private void clearDone() {
 		if (activity == Activity.DONE) {
-			setActivity(lastBusy ? Activity.RUNNING : Activity.IDLE);
+			setActivity(longRunning ? Activity.RUNNING : Activity.IDLE);
 		}
 	}
 
@@ -1624,6 +1644,8 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		keepAboveTheNewShell();
 		ended = false;
 		lastBusy = false;
+		busySince = 0;
+		longRunning = false;
 		showProgress(0);
 		sessionStart = System.currentTimeMillis();
 		if (current != null) {

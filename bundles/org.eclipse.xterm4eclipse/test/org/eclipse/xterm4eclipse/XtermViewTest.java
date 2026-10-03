@@ -368,7 +368,7 @@ class XtermViewTest {
 		await("error message", () -> screen(view).contains("Could not start the shell"));
 		assertTrue(screen(view).contains("Press Enter to try again."));
 		type(view, "\r");
-		await("tried again", () -> screen(view).split("Could not start the shell", -1).length == 3);
+		await("tried again", () -> text(view).split("Could not start the shell", -1).length == 3);
 		assertEquals("xterm-shell", view.getPartName());
 	}
 
@@ -1446,13 +1446,24 @@ class XtermViewTest {
 		shiftEnter(view);
 		await("command run by Shift+Enter", () -> screen(view).contains("shift-6\n"));
 
-		// A program in the foreground receives ESC CR, as Claude Code expects for a new line.
-		type(view, "cat -v\r");
-		await("program running", view::isDirty);
-		shiftEnter(view);
-		type(view, "\r");
-		await("Alt+Enter received", () -> screen(view).contains("^["));
-		type(view, "\u0003");
+		// A program in the foreground receives ESC CR, as Claude Code expects for a new line. On Windows
+		// the pseudo console turns it into Alt+Enter for the native programs, such as Claude Code on
+		// Node, which read it back as ESC CR: the programs of Git Bash do not.
+		if (TestWorkbench.WINDOWS) {
+			type(view, "node -e 'process.stdin.setRawMode(true); process.stdin.once(\"data\", function (d) {"
+					+ " console.log(\"got\" + JSON.stringify(String(d))); process.exit(); })'\r");
+			await("program running", view::isDirty);
+			pump(1000);
+			shiftEnter(view);
+			await("Alt+Enter received", () -> screen(view).contains("got\"\\u001b\\r\""));
+		} else {
+			type(view, "cat -v\r");
+			await("program running", view::isDirty);
+			shiftEnter(view);
+			type(view, "\r");
+			await("Alt+Enter received", () -> screen(view).contains("^["));
+			type(view, "\u0003");
+		}
 
 		// A view running a program of its own always sends it ESC CR.
 		XtermView program = new XtermView();
