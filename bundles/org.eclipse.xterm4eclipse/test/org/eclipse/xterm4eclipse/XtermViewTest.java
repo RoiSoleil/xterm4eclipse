@@ -563,13 +563,36 @@ class XtermViewTest {
 		type(view, "\u0003");
 	}
 
+	/** The keys of the keyboard, through SWT and the browser, reach a program as in an xterm. */
+	@Test
+	@org.junit.jupiter.api.condition.EnabledOnOs(org.junit.jupiter.api.condition.OS.LINUX)
+	void keysOfTheKeyboardReachTheProgramAsInAnXterm() throws Exception {
+		XtermView view = open();
+		// Raw: every key as it comes, Ctrl+C or Ctrl+Z included.
+		type(view, "stty raw -echo; timeout 20 cat -v; stty sane\r");
+		await("program running", view::isDirty);
+		workbench.shells.get(0).forceActive();
+		view.browser.setFocus();
+		pump(500);
+		int[][] keys = {{SWT.ARROW_UP, 0}, {SWT.ARROW_LEFT, SWT.CTRL}, {SWT.HOME, 0}, {SWT.END, 0}, {SWT.PAGE_UP, 0},
+				{SWT.PAGE_DOWN, 0}, {SWT.DEL, 0}, {SWT.BS, 0}, {SWT.F1, 0}, {SWT.F5, 0}, {SWT.INSERT, 0}, {'x', SWT.ALT},
+				{'c', SWT.CTRL}, {'z', SWT.CTRL}, {'r', SWT.CTRL}, {'l', SWT.CTRL}, {'d', SWT.CTRL}, {SWT.ESC, 0}};
+		for (int[] key : keys) {
+			pressKey(key[0], key[1]);
+		}
+		await("keys received", () -> screen(view).contains(
+				"^[[A^[[1;5D^[[H^[[F^[[5~^[[6~^[[3~^?^[OP^[[15~^[[2~^[x^C^Z^R^L^D^["));
+	}
+
 	private static void pressKey(int key, int modifier) {
 		Display display = TestWorkbench.DISPLAY;
 		if (modifier != 0) {
 			post(display, SWT.KeyDown, modifier, 0);
 		}
-		post(display, SWT.KeyDown, key, key == SWT.TAB ? '\t' : key == SWT.CR ? '\r' : key == SWT.ESC ? (char) 27 : 0);
-		post(display, SWT.KeyUp, key, key == SWT.TAB ? '\t' : key == SWT.CR ? '\r' : key == SWT.ESC ? (char) 27 : 0);
+		int character = key == SWT.TAB ? '\t' : key == SWT.CR ? '\r' : key == SWT.ESC ? 27 : key == SWT.BS ? 8
+				: key == SWT.DEL ? 127 : key < 0x10000 && key >= ' ' ? key : 0;
+		post(display, SWT.KeyDown, key, character);
+		post(display, SWT.KeyUp, key, character);
 		if (modifier != 0) {
 			post(display, SWT.KeyUp, modifier, 0);
 		}
