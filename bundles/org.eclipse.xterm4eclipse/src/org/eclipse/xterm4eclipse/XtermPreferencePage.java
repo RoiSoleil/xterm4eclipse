@@ -31,6 +31,9 @@ public class XtermPreferencePage extends FieldEditorPreferencePage implements IW
 				getFieldEditorParent()));
 		addField(new BooleanFieldEditor(XtermPlugin.PREF_RESTORE_HISTORY,
 				"&Restore the content of the terminals when Eclipse restarts", getFieldEditorParent())); //$NON-NLS-1$
+		addField(new BooleanFieldEditor(XtermPlugin.PREF_WARN_MULTI_LINE_PASTE,
+				"&Confirm a paste of several lines when the shell would run each line at once", //$NON-NLS-1$
+				getFieldEditorParent()));
 		addField(new StringFieldEditor(XtermPlugin.PREF_ECLIPSE_SHORTCUTS,
 				"&Eclipse shortcuts that work in the terminal (M1 is Ctrl, or Cmd on macOS):", //$NON-NLS-1$
 				getFieldEditorParent()));
