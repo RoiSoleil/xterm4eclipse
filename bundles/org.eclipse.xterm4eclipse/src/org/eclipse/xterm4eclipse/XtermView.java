@@ -1635,9 +1635,13 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			}
 			String message = failure == null ? "\u001b[2m[Claude Code can now use Eclipse.]\u001b[0m\r\n" //$NON-NLS-1$
 					: "\u001b[31m[Could not add the MCP server of Eclipse: " + oneLine(failure).strip() + "]\u001b[0m\r\n"; //$NON-NLS-1$ //$NON-NLS-2$
+			if (failure != null) {
+				XtermPlugin.log("Could not add the MCP server of Eclipse to Claude Code: " + failure, null); //$NON-NLS-1$
+			}
 			display.asyncExec(() -> {
 				if (!browser.isDisposed()) {
 					append(null, message.getBytes(StandardCharsets.UTF_8));
+					keepAboveTheNewShell();
 					startProcessAndSendPendingInput();
 				}
 			});

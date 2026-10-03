@@ -470,7 +470,7 @@ class XtermViewTest {
 			XtermView.open(page, commandLine, FOLDER);
 			await("added and started", () -> screen(opened.get(0)).contains("args: --session-id"));
 			assertEquals(List.of(url), asked);
-			assertTrue(screen(opened.get(0)).contains("[Claude Code can now use Eclipse.]"));
+			assertTrue(text(opened.get(0)).contains("[Claude Code can now use Eclipse.]"));
 			String add = "mcp add --transport http --scope user eclipse " + url + " --header";
 			List<String> calls = Files.readAllLines(log).stream().map(String::strip).toList();
 			assertEquals(3, calls.size(), calls.toString());
