@@ -8,6 +8,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -64,7 +66,8 @@ final class PtySession {
 		heldTerminal.set(MacTerminal.hold(pty.getSlaveName()));
 		pty.setTerminalSize(cols, rows);
 		try {
-			process = ProcessFactory.getFactory().exec(command, environment(command), workingDirectory, pty);
+			process = ProcessFactory.getFactory().exec(command(command, System.getProperty("os.name", "")), //$NON-NLS-1$ //$NON-NLS-2$
+					environment(command), workingDirectory, pty);
 		} catch (IOException | RuntimeException e) {
 			releaseTerminal();
 			throw e;
@@ -296,6 +299,63 @@ final class PtySession {
 	 * @param userSetting
 	 *            the variables the user gives to the shells, see {@link ShellEnvironment}
 	 */
+	/**
+	 * Wraps the prompt of PowerShell (that of the profile of the user, or the default one) so that it
+	 * announces its directory first (OSC 9;9), as cmd.exe and bash do on Windows: only for the
+	 * folders of the file system, not for the drives of the registry or of the certificates.
+	 */
+	private static final String POWERSHELL_PROMPT = """
+			$global:__xterm4eclipse_prompt = $function:prompt
+			function global:prompt {
+			    $text = & $global:__xterm4eclipse_prompt
+			    $location = $executionContext.SessionState.Path.CurrentLocation
+			    if ($location.Provider.Name -ne 'FileSystem') { return $text }
+			    "$([char]27)]9;9;$($location.ProviderPath)$([char]27)\\$text"
+			}
+			"""; //$NON-NLS-1$
+
+	/** Parameters of PowerShell that run a command or a script instead of a shell. */
+	private static final List<String> POWERSHELL_COMMANDS = List.of("command", "file", "encodedcommand"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+	/** Parameters of PowerShell followed by a value. */
+	private static final List<String> POWERSHELL_VALUES = List.of("executionpolicy", "ex", "ep", "windowstyle", "w", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+			"workingdirectory", "wd", "configurationname", "config", "settingsfile", "inputformat", "outputformat", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$
+			"of", "if", "version", "v", "psconsolefile", "custompipename"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
+
+	/**
+	 * @return the command line to start: on Windows, PowerShell run as a shell gets a prompt that
+	 *         announces its directory
+	 */
+	static String[] command(String[] command, String os) {
+		if (!os.toLowerCase().contains("win") || command.length == 0) { //$NON-NLS-1$
+			return command;
+		}
+		String program = command[0].toLowerCase();
+		if (!program.matches("(?:.*[\\\\/])?(?:powershell|pwsh)(?:\\.exe)?")) { //$NON-NLS-1$
+			return command;
+		}
+		for (int i = 1; i < command.length; i++) {
+			String argument = command[i];
+			if (!argument.startsWith("-") && !argument.startsWith("/")) { //$NON-NLS-1$ //$NON-NLS-2$
+				// A script to run.
+				return command;
+			}
+			String name = argument.substring(1).toLowerCase();
+			if (name.equals("c") || name.equals("f") || name.equals("e") || name.equals("ec") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+					|| name.length() >= 3 && POWERSHELL_COMMANDS.stream().anyMatch(parameter -> parameter.startsWith(name))) {
+				return command;
+			}
+			if (POWERSHELL_VALUES.contains(name)) {
+				i++;
+			}
+		}
+		String encoded = Base64.getEncoder().encodeToString(POWERSHELL_PROMPT.getBytes(StandardCharsets.UTF_16LE));
+		String[] result = Arrays.copyOf(command, command.length + 3);
+		result[command.length] = "-NoExit"; //$NON-NLS-1$
+		result[command.length + 1] = "-EncodedCommand"; //$NON-NLS-1$
+		result[command.length + 2] = encoded;
+		return result;
+	}
+
 	/** The function that announces the directory of bash on Windows, exported as bash reads it. */
 	private static final String PROMPT_FUNCTION = "__xterm4eclipse_prompt"; //$NON-NLS-1$
 	static final String PROMPT_FUNCTION_VARIABLE = "BASH_FUNC_" + PROMPT_FUNCTION + "%%"; //$NON-NLS-1$ //$NON-NLS-2$

@@ -1643,6 +1643,10 @@ class XtermViewTest {
 		assertTrue(XtermView.isProgramPath("C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
 				"powershell.exe -NoLogo"));
 		assertTrue(XtermView.isProgramPath("C:\\Windows\\system32\\cmd.exe ", "cmd.exe /c claude.cmd"));
+		assertTrue(XtermView.isProgramPath("Administrator: C:\\Program Files\\PowerShell\\7\\pwsh.exe", "pwsh.exe"),
+				"elevated");
+		assertTrue(XtermView.isProgramPath("Administrateur : C:\\Windows\\system32\\cmd.exe", "cmd.exe"));
+		assertFalse(XtermView.isProgramPath("Build: C:\\work\\app.exe", "cmd.exe"), "another program");
 		assertFalse(XtermView.isProgramPath("bash.exe", "bash.exe"), "not a path");
 		assertFalse(XtermView.isProgramPath("MINGW64:/c/Users/me", gitBash));
 		assertFalse(XtermView.isProgramPath("/usr/bin/vim", "/bin/bash"));

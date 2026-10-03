@@ -1269,7 +1269,8 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	 */
 	static boolean isProgramPath(String title, String commandLine) {
 		String[] arguments = ShellProfiles.parse(commandLine == null ? "" : commandLine); //$NON-NLS-1$
-		String path = title.strip();
+		// The title of an elevated program starts with "Administrator: ", in the language of Windows.
+		String path = title.strip().replaceFirst("^[^\\\\/:]{1,40}?\\s?:\\s+(?=([A-Za-z]:)?[\\\\/])", ""); //$NON-NLS-1$ //$NON-NLS-2$
 		if (arguments.length == 0 || !path.matches("([A-Za-z]:)?[\\\\/].*")) { //$NON-NLS-1$
 			return false;
 		}

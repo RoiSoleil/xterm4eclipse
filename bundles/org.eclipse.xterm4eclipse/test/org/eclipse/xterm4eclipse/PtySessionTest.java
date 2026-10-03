@@ -1,5 +1,6 @@
 package org.eclipse.xterm4eclipse;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -171,6 +172,31 @@ class PtySessionTest implements PtySession.Listener {
 		List<String> powershell = List.of(PtySession.environment(new String[] {"pwsh.exe"}, "Windows 11", Map.of()));
 		assertTrue(powershell.stream().noneMatch(entry -> entry.startsWith("PROMPT=")));
 		assertTrue(powershell.contains("CHERE_INVOKING=1"), "Git Bash stays in the directory it is started in");
+	}
+
+	@Test
+	void powerShellRunAsAShellAnnouncesItsDirectory() {
+		String[] shell = PtySession.command(new String[] {"C:\\Program Files\\PowerShell\\7\\pwsh.exe", "-NoLogo"},
+				"Windows 11");
+		assertEquals(5, shell.length);
+		assertEquals("-NoExit", shell[2]);
+		assertEquals("-EncodedCommand", shell[3]);
+		String script = new String(java.util.Base64.getDecoder().decode(shell[4]), StandardCharsets.UTF_16LE);
+		assertTrue(script.contains("function global:prompt"), script);
+		assertTrue(script.contains("]9;9;"), script);
+		assertEquals(6, PtySession.command(new String[] {"powershell.exe", "-ExecutionPolicy", "Bypass"}, "Windows 11").length,
+				"the value of a parameter is not a script");
+		assertEquals(4, PtySession.command(new String[] {"PWSH"}, "Windows 10").length);
+
+		// A command or a script runs: no prompt to change.
+		for (String[] program : List.of(new String[] {"pwsh", "-c", "claude"}, new String[] {"powershell.exe", "-Command", "x"},
+				new String[] {"pwsh.exe", "-File", "a.ps1"}, new String[] {"pwsh", "-com", "x"}, new String[] {"pwsh", "/c", "x"},
+				new String[] {"pwsh", "a.ps1"}, new String[] {"pwsh", "-EncodedCommand", "AA=="}, new String[] {"pwsh", "-ec", "AA=="},
+				new String[] {"cmd.exe"}, new String[] {"C:\\tools\\mypwsh.exe"})) {
+			assertArrayEquals(program, PtySession.command(program, "Windows 11"), String.join(" ", program));
+		}
+		// Elsewhere the directory is read from the system.
+		assertArrayEquals(new String[] {"pwsh"}, PtySession.command(new String[] {"pwsh"}, "Linux"));
 	}
 
 	@Test

@@ -122,9 +122,10 @@ systems and sends the coverage of Linux to Codecov.
 - The tests run on Linux, macOS and Windows at each change, with the real browser of each system
   (WebKitGTK, WebKit, Edge) and its pseudo terminals (ConPTY on Windows).
 - The directory of the shell is read from the system on Linux and macOS. On Windows it is known
-  only if the shell announces it (OSC 9;9 or OSC 7): this is set up automatically for `cmd.exe` and
-  for the bash of Git for Windows, MSYS2 and Cygwin (through `PROMPT_COMMAND`, which a `.bashrc` that
-  replaces it turns off).
+  only if the shell announces it (OSC 9;9 or OSC 7): this is set up automatically for `cmd.exe`, for
+  PowerShell (5.1 and 7, whose prompt, that of the profile included, is wrapped when it runs as a
+  shell) and for the bash of Git for Windows, MSYS2 and Cygwin (through `PROMPT_COMMAND`, which a
+  `.bashrc` that replaces it turns off).
 - On Windows the pseudo console clears the screen when a shell starts: the restored history and the
   end of a restarted shell are in the scrollback, above it.
 
