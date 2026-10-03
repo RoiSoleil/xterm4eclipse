@@ -642,6 +642,29 @@ class XtermViewTest {
 	}
 
 	@Test
+	void restoredScreenOfAFullScreenProgramIsNotOverwritten() throws Exception {
+		XtermView view = open();
+		// A program such as Claude Code leaves the cursor above its last lines.
+		type(view, "clear; printf 'first-line\\nprompt-line\\nfooter-line\\033[2A'; sleep 30\r");
+		await("drawn", () -> screen(view).startsWith("first-line") && screen(view).contains("\nprompt-line\nfooter-line"));
+		XMLMemento memento = XMLMemento.createWriteRoot("view");
+		view.saveState(memento);
+		type(view, "\u0003");
+		workbench.closing = true;
+		XtermView restored = new XtermView();
+		workbench.open(restored, null, memento);
+		await("restored", () -> screen(restored).contains("History restored"));
+		String screen = screen(restored);
+		assertTrue(screen.indexOf("footer-line") < screen.indexOf("History restored"), screen);
+		assertTrue(screen.contains("prompt-line\nfooter-line\n"), screen);
+
+		assertEquals("a\u001b[0m", XtermView.endOfContent("a\u001b[2A\u001b[6D\u001b[0m"));
+		assertEquals("a\u001b[1;2m", XtermView.endOfContent("a\u001b[1B\u001b[28D\u001b[1;2m"));
+		assertEquals("a\u001b[2Ab", XtermView.endOfContent("a\u001b[2Ab"), "only at the end");
+		assertEquals("plain", XtermView.endOfContent("plain"));
+	}
+
+	@Test
 	void savingBeforeTheViewIsCreatedOnlyRecordsTheShell() throws Exception {
 		XtermView view = new XtermView();
 		XMLMemento memento = XMLMemento.createWriteRoot("view");

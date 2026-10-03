@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 import org.eclipse.core.commands.ExecutionException;
 import org.eclipse.core.commands.ParameterizedCommand;
@@ -1308,6 +1309,19 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		}
 	}
 
+	/** Cursor movements (CUU, CUD, CUF, CUB) at the end of a screen, before its last colors. */
+	private static final Pattern TRAILING_CURSOR_MOVES = Pattern
+			.compile("(?:\u001b\\[\\d*[ABCD])+((?:\u001b\\[[0-9;]*m)*)$"); //$NON-NLS-1$
+
+	/**
+	 * A saved screen ends by putting the cursor back where the program left it, often above its last
+	 * lines (a prompt in a full screen program). Shown again, it must leave the cursor after the last
+	 * line instead: what follows (the restore notice, the new shell) would otherwise overwrite it.
+	 */
+	static String endOfContent(String screen) {
+		return TRAILING_CURSOR_MOVES.matcher(screen).replaceFirst("$1"); //$NON-NLS-1$
+	}
+
 	private void startSession() {
 		if (session != null) {
 			session.dispose();
@@ -1317,7 +1331,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			pending.notifyAll();
 		}
 		if (restoredContent != null) {
-			append(null, restoredContent);
+			append(null, endOfContent(new String(restoredContent, StandardCharsets.UTF_8)).getBytes(StandardCharsets.UTF_8));
 			append(null, "\r\n\u001b[2m[History restored]\u001b[0m\r\n".getBytes(StandardCharsets.UTF_8)); //$NON-NLS-1$
 			restoredContent = null;
 		}
