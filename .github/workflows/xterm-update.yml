@@ -11,6 +11,10 @@ permissions:
    pull-requests: write
    actions: write
 concurrency: xterm-update
+defaults:
+   run:
+      # -e -o pipefail: the update fails the run, not only its output.
+      shell: bash
 jobs:
    update:
       runs-on: ubuntu-latest
