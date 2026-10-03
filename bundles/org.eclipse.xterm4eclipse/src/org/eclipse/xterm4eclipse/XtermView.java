@@ -399,6 +399,12 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			}
 			return null;
 		});
+		function("javaProgress", args -> { //$NON-NLS-1$
+			int state = args.length > 0 && args[0] instanceof Number number ? number.intValue() : 0;
+			// Not from within the call: the workbench updates the tab.
+			display.asyncExec(() -> showProgress(state));
+			return null;
+		});
 		function("javaCopy", args -> { //$NON-NLS-1$
 			String text = (String) args[0];
 			if (text != null && !text.isEmpty()) {
@@ -1511,6 +1517,10 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 
 	@Override
 	public void exited(PtySession source, int exitCode) {
+		// A program that ends does not report progress any more.
+		if (!display.isDisposed()) {
+			display.asyncExec(() -> showProgress(0));
+		}
 		if (keepsViewOpen(exitCode, System.currentTimeMillis() - sessionStart, commandLine)) {
 			ended = true;
 			append(null, ("\r\n\u001b[2m[Process exited with code " + exitCode //$NON-NLS-1$
@@ -1553,6 +1563,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		append(null, "\r\n\u001b[2m[Restarted]\u001b[0m\r\n".getBytes(StandardCharsets.UTF_8)); //$NON-NLS-1$
 		ended = false;
 		lastBusy = false;
+		showProgress(0);
 		sessionStart = System.currentTimeMillis();
 		if (current != null) {
 			current.dispose();
@@ -1561,6 +1572,33 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		startNewSession();
 		firePropertyChange(IWorkbenchPartConstants.PROP_DIRTY);
 		setActivity(Activity.IDLE);
+	}
+
+	/** Whether the tab shows that a program reports progress (OSC 9;4). */
+	private boolean progressShown;
+
+	/**
+	 * Shows the tab as busy while a program reports progress, as Windows Terminal shows it on its tab.
+	 *
+	 * @param state
+	 *            of OSC 9;4: 1 progress, 3 indeterminate, 4 paused show it; 0 (done) and 2 (error)
+	 *            end it
+	 */
+	void showProgress(int state) {
+		boolean busy = state == 1 || state == 3 || state == 4;
+		if (busy == progressShown || browser == null || browser.isDisposed()) {
+			return;
+		}
+		IWorkbenchSiteProgressService progress = getSite().getService(IWorkbenchSiteProgressService.class);
+		if (progress == null) {
+			return;
+		}
+		progressShown = busy;
+		if (busy) {
+			progress.incrementBusy();
+		} else {
+			progress.decrementBusy();
+		}
 	}
 
 	/** Answers of {@link #askPaste}. */
@@ -1736,6 +1774,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 
 	@Override
 	public void dispose() {
+		showProgress(0);
 		getSite().getPage().removePartListener(partListener);
 		if (lastActive == this) {
 			lastActive = null;

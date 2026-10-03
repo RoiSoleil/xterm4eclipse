@@ -30,6 +30,8 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
 - The tab shows the icon of the shell or program it runs (bash, zsh, fish, PowerShell, cmd, Git Bash,
   WSL, Claude Code), with a badge for a running command (orange dot) and for a finished command or a
   program asking for attention through the bell or an OSC 9 / OSC 777 notification (green dot).
+- The tab shows as busy while a program reports its progress (OSC 9;4, as on the tabs of Windows
+  Terminal).
 - After a restart of Eclipse each terminal reopens with the same shell, directory and screen content.
 - `exit` closes the view. A program run on its own (Claude Code...) that fails, or a shell that cannot
   start, keeps its view open with its last output: Enter starts it again. *Restart* in the view menu
