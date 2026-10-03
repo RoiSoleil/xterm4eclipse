@@ -283,11 +283,76 @@ class XtermViewTest {
 	}
 
 	@Test
+	void programThatFailsKeepsItsViewAndStartsAgainOnEnter() throws Exception {
+		// Like Claude Code ending with an error after a while: its message must stay readable.
+		ShellProfiles.setDefaultCommandLine("/bin/sh -c \"sleep 2.5; echo crashed-$$; exit 4\"");
+		XtermView view = new XtermView();
+		workbench.open(view, null, null);
+		await("exit message", () -> screen(view).contains("Process exited with code 4. Press Enter to restart it."));
+		assertTrue(screen(view).contains("crashed-"));
+		pump(300);
+		assertEquals(0, workbench.page.count("hideView"));
+		type(view, "x");
+		pump(200);
+		assertFalse(screen(view).contains("[Restarted]"), "only Enter starts it again");
+		type(view, "\r");
+		await("started again", () -> screen(view).contains("[Restarted]"));
+		await("ended again", () -> screen(view).split("Process exited with code 4", -1).length == 3);
+	}
+
+	@Test
+	void shellLeftWithTheErrorCodeOfItsLastCommandClosesTheView() throws Exception {
+		XtermView view = open();
+		pump(2100);
+		type(view, "false; exit\r");
+		await("view closed", () -> workbench.page.count("hideView") == 1);
+
+		assertTrue(XtermView.keepsViewOpen(1, 500, "/bin/bash"), "failed at once");
+		assertFalse(XtermView.keepsViewOpen(1, 5000, "/bin/bash"), "a shell left by the user");
+		assertFalse(XtermView.keepsViewOpen(0, 5000, "/bin/zsh -l -i -c claude"), "a program that ended well");
+		assertTrue(XtermView.keepsViewOpen(1, 5000, "/bin/zsh -l -i -c claude"), "a program that failed");
+	}
+
+	@Test
+	void restartStartsAFreshShellInTheSameDirectory() throws Exception {
+		boolean[] confirm = {false};
+		int[] asked = {0};
+		XtermView view = open(new XtermView() {
+			@Override
+			boolean confirmRestart() {
+				asked[0]++;
+				return confirm[0];
+			}
+		});
+		run(view, "cd /usr/share && X=set && echo ready", "ready\n");
+		menuAction("Restart").run();
+		await("restarted", () -> screen(view).contains("[Restarted]"));
+		await("new prompt", () -> screen(view).substring(screen(view).indexOf("[Restarted]")).contains("$"));
+		run(view, "echo x=$X in $PWD", "x= in /usr/share");
+		assertEquals(0, asked[0], "nothing ran: no question");
+
+		// A command runs: the user is asked first.
+		type(view, "sleep 30\r");
+		await("running", view::isDirty);
+		view.restart();
+		assertEquals(1, asked[0]);
+		assertTrue(view.isDirty(), "kept");
+		confirm[0] = true;
+		view.restart();
+		assertEquals(2, asked[0]);
+		await("restarted again", () -> screen(view).split("\\[Restarted\\]", -1).length == 3);
+		assertFalse(view.isDirty());
+	}
+
+	@Test
 	void unknownShellIsReportedInTheTerminal() throws Exception {
 		ShellProfiles.setDefaultCommandLine("/nonexistent/xterm-shell");
 		XtermView view = new XtermView();
 		workbench.open(view, null, null);
 		await("error message", () -> screen(view).contains("Could not start the shell"));
+		assertTrue(screen(view).contains("Press Enter to try again."));
+		type(view, "\r");
+		await("tried again", () -> screen(view).split("Could not start the shell", -1).length == 3);
 		assertEquals("xterm-shell", view.getPartName());
 	}
 
