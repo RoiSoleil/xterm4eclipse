@@ -10,9 +10,32 @@ permissions:
    contents: write
 jobs:
    test:
-      runs-on: ubuntu-latest
+      name: test (${{ matrix.name }})
+      strategy:
+         fail-fast: false
+         matrix:
+            include:
+            -  name: Linux
+               os: ubuntu-latest
+               package: linux-gtk-x86_64.tar.gz
+               install: eclipse
+               home: eclipse
+            -  name: Windows
+               os: windows-latest
+               package: win32-x86_64.zip
+               install: eclipse
+               home: eclipse
+            -  name: macOS
+               os: macos-latest
+               package: macosx-cocoa-aarch64.dmg
+               install: Eclipse.app
+               home: Eclipse.app/Contents/Eclipse
+      runs-on: ${{ matrix.os }}
+      defaults:
+         run:
+            shell: bash
       env:
-         ECLIPSE_URL: https://www.eclipse.org/downloads/download.php?file=/technology/epp/downloads/release/2026-06/R/eclipse-committers-2026-06-R-linux-gtk-x86_64.tar.gz&r=1
+         ECLIPSE_URL: https://www.eclipse.org/downloads/download.php?file=/technology/epp/downloads/release/2026-06/R/eclipse-committers-2026-06-R-${{ matrix.package }}&r=1
       steps:
       -  name: Checkout
          uses: actions/checkout@v5
@@ -25,12 +48,24 @@ jobs:
          id: eclipse
          uses: actions/cache@v4.2.4
          with:
-           path: ~/eclipse
-           key: eclipse-committers-2026-06-R-linux-gtk-x86_64
+           path: ~/${{ matrix.install }}
+           key: eclipse-committers-2026-06-R-${{ matrix.package }}
       -  name: Download Eclipse
          if: steps.eclipse.outputs.cache-hit != 'true'
-         run: curl -sfL "$ECLIPSE_URL" | tar xz -C ~
+         run: |
+            curl -sfL -o "$RUNNER_TEMP/${{ matrix.package }}" "$ECLIPSE_URL"
+            case "${{ matrix.package }}" in
+            *.tar.gz) tar xzf "$RUNNER_TEMP/${{ matrix.package }}" -C ~ ;;
+            *.zip) 7z x -bd -y -o"$HOME" "$RUNNER_TEMP/${{ matrix.package }}" > /dev/null ;;
+            *.dmg)
+               hdiutil attach -quiet -nobrowse -readonly -mountpoint "$RUNNER_TEMP/dmg" "$RUNNER_TEMP/${{ matrix.package }}"
+               cp -R "$RUNNER_TEMP/dmg/Eclipse.app" ~/
+               hdiutil detach -quiet "$RUNNER_TEMP/dmg"
+               ;;
+            esac
+            test -d ~/"${{ matrix.home }}/plugins"
       -  name: Install the browser and a display
+         if: runner.os == 'Linux'
          run: |
             sudo apt-get update
             sudo apt-get install -y xvfb libwebkit2gtk-4.1-0 libgtk-3-0
@@ -38,12 +73,17 @@ jobs:
             sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       -  name: Test
          env:
-            ECLIPSE_HOME: /home/runner/eclipse
             WEBKIT_DISABLE_COMPOSITING_MODE: 1
             WEBKIT_DISABLE_DMABUF_RENDERER: 1
-         run: xvfb-run -a -s "-screen 0 1280x1024x24" ./test.sh
+         run: |
+            export ECLIPSE_HOME="$HOME/${{ matrix.home }}"
+            if [ "$RUNNER_OS" = Linux ]; then
+               xvfb-run -a -s "-screen 0 1280x1024x24" ./test.sh
+            else
+               ./test.sh
+            fi
       -  name: Upload coverage to Codecov
-         if: always()
+         if: always() && runner.os == 'Linux'
          uses: codecov/codecov-action@v5
          with:
             files: build/coverage.xml
