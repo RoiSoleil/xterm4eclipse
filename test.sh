@@ -84,6 +84,7 @@ java ${JAVA_OPTS[@]+"${JAVA_OPTS[@]}"} -Dfile.encoding=UTF-8 \
 	-Djava.library.path=build/natives -Dxterm4eclipse.state=build/state "-Dxterm4eclipse.test.bash=$TEST_BASH" \
 	@build/run.args \
 	org.junit.platform.console.ConsoleLauncher execute --scan-classpath build/test-classes \
+	--config 'junit.jupiter.testclass.order.default=org.junit.jupiter.api.ClassOrderer$ClassName' \
 	--details=tree --disable-banner ${@+"$@"} || STATUS=$?
 
 java -jar ".cache/org.jacoco.cli-$JACOCO-nodeps.jar" report build/jacoco.exec --classfiles build/classes \
