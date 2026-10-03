@@ -6,9 +6,8 @@ import org.eclipse.ui.IMemento;
 import org.eclipse.ui.IPersistableElement;
 
 /**
- * What an {@link XtermEditor} shows: a terminal, identified by an id that also names the file of its
- * saved screen. Persisted with the workbench, so that the terminals of the editor area come back
- * after a restart of Eclipse, as the views do.
+ * A terminal of the editor area saved by version 0.1 of the plug-in, until {@link XtermEditor} turns
+ * it into a view.
  */
 public final class XtermEditorInput implements IEditorInput, IPersistableElement {
 
@@ -16,28 +15,11 @@ public final class XtermEditorInput implements IEditorInput, IPersistableElement
 	private static final String[] STATE_KEYS = {"shell", "directory", "name"}; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 
 	private final String id;
-	/** The shell of the terminal, for its icon; {@code null} if unknown. */
-	private final String commandLine;
-	/** The state saved by an earlier session of Eclipse, until the editor is created. */
 	private final IMemento state;
-	private TerminalTransfer transfer;
-	private XtermEditor editor;
 
-	/** A terminal moving to the editor area. */
-	XtermEditorInput(TerminalTransfer transfer) {
-		this(XtermView.nextId("e"), null, transfer.commandLine); //$NON-NLS-1$
-		this.transfer = transfer;
-	}
-
-	/** A terminal of an earlier session of Eclipse. */
 	XtermEditorInput(String id, IMemento state) {
-		this(id, state, state == null ? null : state.getString("shell")); //$NON-NLS-1$
-	}
-
-	private XtermEditorInput(String id, IMemento state, String commandLine) {
 		this.id = id;
 		this.state = state;
-		this.commandLine = commandLine;
 	}
 
 	String id() {
@@ -48,38 +30,21 @@ public final class XtermEditorInput implements IEditorInput, IPersistableElement
 		return state;
 	}
 
-	/** @return the terminal moving here, once: the first caller owns it */
-	synchronized TerminalTransfer takeTransfer() {
-		TerminalTransfer taken = transfer;
-		transfer = null;
-		return taken;
-	}
-
-	/** Gives back a terminal that an editor could not take. */
-	synchronized void giveBack(TerminalTransfer moving) {
-		transfer = moving;
-	}
-
-	void setEditor(XtermEditor shownBy) {
-		editor = shownBy;
-	}
-
 	@Override
 	public boolean exists() {
-		// Not offered in the list of recently opened files: a terminal is not a file to open again.
 		return false;
 	}
 
 	@Override
 	public ImageDescriptor getImageDescriptor() {
-		// The icon of the shell, as on the tab: shown in the lists of editors.
-		String icon = commandLine == null ? "icons/xterm.png" : ShellProfiles.iconOf(commandLine); //$NON-NLS-1$
-		return ImageDescriptor.createFromFile(XtermEditorInput.class, '/' + icon);
+		String shell = state == null ? null : state.getString("shell"); //$NON-NLS-1$
+		return ImageDescriptor.createFromFile(XtermEditorInput.class,
+				'/' + (shell == null ? "icons/xterm.png" : ShellProfiles.iconOf(shell))); //$NON-NLS-1$
 	}
 
 	@Override
 	public String getName() {
-		return editor != null ? editor.getPartName() : "Xterm"; //$NON-NLS-1$
+		return "Xterm"; //$NON-NLS-1$
 	}
 
 	@Override
@@ -89,6 +54,7 @@ public final class XtermEditorInput implements IEditorInput, IPersistableElement
 
 	@Override
 	public IPersistableElement getPersistable() {
+		// Saved again as it is if Eclipse closes before the editor became a view.
 		return this;
 	}
 
@@ -105,10 +71,7 @@ public final class XtermEditorInput implements IEditorInput, IPersistableElement
 	@Override
 	public void saveState(IMemento memento) {
 		memento.putString(MEMENTO_ID, id);
-		if (editor != null) {
-			editor.saveTerminalState(memento);
-		} else if (state != null) {
-			// Not shown since Eclipse started: what was saved last time is still what to restore.
+		if (state != null) {
 			for (String key : STATE_KEYS) {
 				if (state.getString(key) != null) {
 					memento.putString(key, state.getString(key));

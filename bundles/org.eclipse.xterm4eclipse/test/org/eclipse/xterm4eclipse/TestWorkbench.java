@@ -1,11 +1,10 @@
 package org.eclipse.xterm4eclipse;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.function.BooleanSupplier;
 
+import org.eclipse.e4.ui.model.application.ui.basic.MBasicFactory;
 import org.eclipse.e4.ui.model.application.ui.basic.MPart;
 import org.eclipse.jface.action.MenuManager;
 import org.eclipse.jface.action.ToolBarManager;
@@ -52,21 +51,16 @@ final class TestWorkbench {
 	final List<Shell> shells = new ArrayList<>();
 	final List<XtermView> views = new ArrayList<>();
 	final List<XtermEditor> editors = new ArrayList<>();
-	/** The tab of each part in the model of the workbench, in the order the parts were created. */
-	final List<TabModel> tabs = new ArrayList<>();
+	/** The part of each view or editor in the model of the workbench, in the order of creation. */
+	final List<MPart> parts = new ArrayList<>();
+	/** The part in the model for the next view or editor, instead of a new one. */
+	MPart nextPart;
 
-	/** The model of a tab, as Eclipse 4 keeps it for a part. */
-	static final class TabModel {
-		String iconUri;
-		final Map<String, Object> transientData = new HashMap<>();
-		final MPart part;
-
-		TabModel() {
-			part = new Fake().on("getIconURI", args -> iconUri).on("setIconURI", args -> {
-				iconUri = (String) args[0];
-				return null;
-			}).on("getTransientData", args -> transientData).as(MPart.class);
-		}
+	private MPart nextPart() {
+		MPart part = nextPart != null ? nextPart : MBasicFactory.INSTANCE.createPart();
+		nextPart = null;
+		parts.add(part);
+		return part;
 	}
 	boolean closing;
 	ISelection selection;
@@ -87,8 +81,7 @@ final class TestWorkbench {
 	}
 
 	IViewSite site(String secondaryId) {
-		TabModel tab = new TabModel();
-		tabs.add(tab);
+		MPart part = nextPart();
 		IWorkbenchWindow window = new Fake().on("getWorkbench", args -> workbench.as(IWorkbench.class))
 				.as(IWorkbenchWindow.class);
 		return new Fake().on("getPage", args -> workbenchPage)
@@ -99,13 +92,12 @@ final class TestWorkbench {
 				.on("getService",
 						args -> args[0] == IWorkbenchSiteProgressService.class
 								? progress.as(IWorkbenchSiteProgressService.class)
-								: args[0] == MPart.class ? tab.part : null)
+								: args[0] == MPart.class ? part : null)
 				.as(IViewSite.class);
 	}
 
 	IEditorSite editorSite() {
-		TabModel tab = new TabModel();
-		tabs.add(tab);
+		MPart part = nextPart();
 		IWorkbenchWindow window = new Fake().on("getWorkbench", args -> workbench.as(IWorkbench.class))
 				.as(IWorkbenchWindow.class);
 		return new Fake().on("getPage", args -> workbenchPage)
@@ -114,7 +106,7 @@ final class TestWorkbench {
 				.on("getService",
 						args -> args[0] == IWorkbenchSiteProgressService.class
 								? progress.as(IWorkbenchSiteProgressService.class)
-								: args[0] == MPart.class ? tab.part : null)
+								: args[0] == MPart.class ? part : null)
 				.as(IEditorSite.class);
 	}
 
