@@ -170,10 +170,27 @@
 		}
 		window.xtermSanitize = sanitize;
 
+		// Without bracketed paste, a shell runs each line of a paste as soon as it gets it: ask first,
+		// as VS Code does ("auto"), unless the user turned the warning off.
+		var warnMultiLinePaste = cfg.warnMultiLinePaste !== false;
+		function userPaste(text) {
+			var clean = sanitize(text);
+			if (warnMultiLinePaste && !term.modes.bracketedPasteMode && /[\r\n]/.test(clean.replace(/(\r?\n|\r)$/, ''))) {
+				javaConfirmPaste(clean);
+				return;
+			}
+			term.paste(clean);
+		}
+		// The answer of the user, from the Java side.
+		window.xtermPasteConfirmed = function (base64) {
+			safePaste(new TextDecoder('utf-8').decode(base64Bytes(base64)));
+			term.focus();
+		};
+
 		function paste() {
 			var text = javaPaste();
 			if (text) {
-				safePaste(text);
+				userPaste(text);
 			}
 		}
 
@@ -409,7 +426,7 @@
 			}
 			var dropped = javaDrop(uris, text);
 			if (dropped) {
-				safePaste(dropped);
+				userPaste(dropped);
 			}
 			term.focus();
 		}, true);
@@ -482,6 +499,7 @@
 			term.options.fontFamily = config.fontFamily;
 			term.options.fontSize = config.fontSize;
 			shortcuts = config.shortcuts || [];
+			warnMultiLinePaste = config.warnMultiLinePaste !== false;
 			doFit();
 		};
 		window.xtermTheme = function () { return term.options.theme; };

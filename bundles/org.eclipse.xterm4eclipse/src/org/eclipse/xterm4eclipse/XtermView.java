@@ -389,6 +389,14 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			input(shiftEnterSequence(), false);
 			return null;
 		});
+		function("javaConfirmPaste", args -> { //$NON-NLS-1$
+			String text = args.length > 0 && args[0] instanceof String value ? value : null;
+			if (text != null) {
+				// Not from within the call: a dialog runs the event loop.
+				display.asyncExec(() -> confirmPaste(text));
+			}
+			return null;
+		});
 		function("javaCopy", args -> { //$NON-NLS-1$
 			String text = (String) args[0];
 			if (text != null && !text.isEmpty()) {
@@ -1285,6 +1293,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 				.append("\",\"fontSize\":").append(size).append(",\"dark\":").append(dark) //$NON-NLS-1$ //$NON-NLS-2$
 				.append(",\"os\":\"").append(IS_WINDOWS ? "windows" : IS_MAC ? "mac" : "linux").append('"') //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 				.append(",\"background\":\"").append(hex(background)).append('"') //$NON-NLS-1$
+				.append(",\"warnMultiLinePaste\":").append(XtermPlugin.isEnabled(XtermPlugin.PREF_WARN_MULTI_LINE_PASTE)) //$NON-NLS-1$
 				.append(",\"shortcuts\":").append(EclipseShortcuts.toJson( //$NON-NLS-1$
 						EclipseShortcuts.parse(XtermPlugin.preference(XtermPlugin.PREF_ECLIPSE_SHORTCUTS))));
 		// A theme may leave the foreground unstyled: only use it when it is readable.
@@ -1464,6 +1473,48 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		startNewSession();
 		firePropertyChange(IWorkbenchPartConstants.PROP_DIRTY);
 		setActivity(Activity.IDLE);
+	}
+
+	/** Answers of {@link #askPaste}. */
+	static final int PASTE = 0;
+	static final int PASTE_AS_ONE_LINE = 1;
+	static final int CANCEL_PASTE = 2;
+
+	/**
+	 * Pastes a text of several lines once the user has confirmed it: the shell, without bracketed
+	 * paste, runs each line as soon as it gets it.
+	 */
+	private void confirmPaste(String text) {
+		if (browser.isDisposed()) {
+			return;
+		}
+		int choice = askPaste(text);
+		if (choice == PASTE || choice == PASTE_AS_ONE_LINE) {
+			String pasted = choice == PASTE_AS_ONE_LINE ? oneLine(text) : text;
+			browser.execute("xtermPasteConfirmed('" //$NON-NLS-1$
+					+ Base64.getEncoder().encodeToString(pasted.getBytes(StandardCharsets.UTF_8)) + "')"); //$NON-NLS-1$
+		}
+		setFocus();
+	}
+
+	/** The lines of the text joined by spaces, without the line break at its end. */
+	static String oneLine(String text) {
+		return text.replaceAll("(\\r\\n|\\r|\\n)+$", "").replaceAll("\\r\\n|\\r|\\n", " "); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+	}
+
+	/**
+	 * Asks the user how to paste a text of several lines.
+	 *
+	 * @return {@link #PASTE}, {@link #PASTE_AS_ONE_LINE} or {@link #CANCEL_PASTE}
+	 */
+	int askPaste(String text) {
+		long lines = text.lines().count();
+		MessageDialog dialog = new MessageDialog(getSite().getShell(), "Paste " + lines + " Lines", null, //$NON-NLS-1$ //$NON-NLS-2$
+				"The text has " + lines + " lines. The shell will run each of them as soon as it is pasted.\n\n" //$NON-NLS-1$ //$NON-NLS-2$
+						+ "(This warning can be turned off in Preferences > Xterm Terminal.)", //$NON-NLS-1$
+				MessageDialog.WARNING, CANCEL_PASTE, "&Paste", "Paste as &One Line", "&Cancel"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		int choice = dialog.open();
+		return choice < 0 ? CANCEL_PASTE : choice;
 	}
 
 	/** Asks the user whether to restart the terminal and terminate the command that runs in it. */

@@ -641,6 +641,83 @@ class XtermViewTest {
 	}
 
 	@Test
+	void pasteOfSeveralLinesIsConfirmedWhenTheShellWouldRunThem() throws Exception {
+		Clipboard clipboard = new Clipboard(TestWorkbench.DISPLAY);
+		Object previous = clipboard.getContents(TextTransfer.getInstance());
+		try {
+			int[] answer = {XtermView.CANCEL_PASTE};
+			List<String> asked = new ArrayList<>();
+			XtermView view = open(new XtermView() {
+				@Override
+				int askPaste(String text) {
+					asked.add(text);
+					return answer[0];
+				}
+			});
+			// A shell without bracketed paste, like cmd.exe or dash: each line runs at once.
+			run(view, "bind 'set enable-bracketed-paste off'; echo off", "off\n");
+			clipboard.setContents(new Object[] {"echo first-$((1+1))\necho second-$((1+2))\n"},
+					new Transfer[] {TextTransfer.getInstance()});
+
+			pasteKeys(view);
+			await("asked", () -> asked.size() == 1);
+			assertEquals("echo first-$((1+1))\necho second-$((1+2))\n", asked.get(0));
+			pump(500);
+			assertFalse(screen(view).contains("first-2"), "cancelled: nothing pasted");
+
+			answer[0] = XtermView.PASTE;
+			pasteKeys(view);
+			await("both lines run", () -> screen(view).contains("\nfirst-2\n") && screen(view).contains("\nsecond-3\n"));
+
+			answer[0] = XtermView.PASTE_AS_ONE_LINE;
+			pasteKeys(view);
+			await("pasted on one line", () -> screen(view).contains("echo first-$((1+1)) echo second-$((1+2))"));
+			type(view, "\r");
+			await("one line", () -> screen(view).contains("\nfirst-2 echo second-3\n"));
+			assertEquals(3, asked.size());
+
+			// One line, or a line with its line break: no question.
+			clipboard.setContents(new Object[] {"echo single-$((2+2))\n"}, new Transfer[] {TextTransfer.getInstance()});
+			pasteKeys(view);
+			await("single line", () -> screen(view).contains("\nsingle-4\n"));
+			assertEquals(3, asked.size());
+
+			// With bracketed paste the shell waits for Enter: no question either.
+			clipboard.setContents(new Object[] {"echo a-$((1+4))\necho b-$((1+5))"}, new Transfer[] {TextTransfer.getInstance()});
+			run(view, "bind 'set enable-bracketed-paste on'; echo on", "on\n");
+			pasteKeys(view);
+			await("block pasted", () -> screen(view).contains("echo b-$((1+5))"));
+			type(view, "\r");
+			await("pasted as a block", () -> screen(view).contains("\nb-6\n"));
+			assertEquals(3, asked.size());
+
+			// Turned off by the user.
+			run(view, "bind 'set enable-bracketed-paste off'; echo off-again", "off-again\n");
+			XtermPlugin.preferences().setValue(XtermPlugin.PREF_WARN_MULTI_LINE_PASTE, false);
+			pump(500);
+			clipboard.setContents(new Object[] {"echo c-$((1+6))\necho d-$((1+7))\n"}, new Transfer[] {TextTransfer.getInstance()});
+			pasteKeys(view);
+			await("pasted without question", () -> screen(view).contains("\nd-8\n"));
+			assertEquals(3, asked.size());
+
+			assertEquals("a b c", XtermView.oneLine("a\r\nb\nc\r\n"));
+			assertEquals("a", XtermView.oneLine("a"));
+		} finally {
+			if (previous != null) {
+				clipboard.setContents(new Object[] {previous}, new Transfer[] {TextTransfer.getInstance()});
+			} else {
+				clipboard.clearContents();
+			}
+			clipboard.dispose();
+		}
+	}
+
+	private static void pasteKeys(XtermView view) {
+		view.browser.execute("document.querySelector('.xterm-helper-textarea').dispatchEvent(new KeyboardEvent('keydown', "
+				+ "{key: 'V', code: 'KeyV', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true}))");
+	}
+
+	@Test
 	void pastedTextCannotEscapeTheBracketedPaste() throws Exception {
 		Clipboard clipboard = new Clipboard(TestWorkbench.DISPLAY);
 		Object previous = clipboard.getContents(TextTransfer.getInstance());
