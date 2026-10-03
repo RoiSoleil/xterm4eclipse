@@ -387,6 +387,28 @@ class XtermViewTest {
 	}
 
 	@Test
+	void progressOfAProgramShowsTheTabAsBusy() throws Exception {
+		XtermView view = open();
+		run(view, "printf '\\033]9;4;1;20\\007'; echo p1", "p1\n");
+		await("busy", () -> workbench.progress.count("incrementBusy") == 1);
+		run(view, "printf '\\033]9;4;1;60\\007\\033]9;4;3\\007\\033]9;4;4;60\\007'; echo p2", "p2\n");
+		pump(300);
+		assertEquals(1, workbench.progress.count("incrementBusy"), "still the same progress");
+		run(view, "printf '\\033]9;4;0;0\\007'; echo p3", "p3\n");
+		await("done", () -> workbench.progress.count("decrementBusy") == 1);
+		run(view, "printf '\\033]9;4;2;50\\007\\033]9;4;x\\007'; echo p4", "p4\n");
+		pump(300);
+		assertEquals(1, workbench.progress.count("incrementBusy"), "an error or a wrong state is no progress");
+		assertEquals(0, workbench.progress.count("warnOfContentChange"), "progress is not a notification");
+
+		// A program that ends, or a terminal that closes, stops showing progress.
+		run(view, "printf '\\033]9;4;3\\007'; echo p5", "p5\n");
+		await("busy again", () -> workbench.progress.count("incrementBusy") == 2);
+		type(view, "exit\r");
+		await("done at the end", () -> workbench.progress.count("decrementBusy") == 2);
+	}
+
+	@Test
 	void finishedCommandTakesTheFocusWhenTheUserAskedForIt() throws Exception {
 		XtermPlugin.preferences().setValue(XtermPlugin.PREF_FOCUS_ON_FINISH, true);
 		XtermView view = open();

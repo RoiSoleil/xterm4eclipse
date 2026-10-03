@@ -478,7 +478,13 @@
 			if (data.indexOf('9;') === 0) {
 				// OSC 9;9 is the current directory (cmd.exe, PowerShell, Windows Terminal convention).
 				javaDirectory(data.substring(2).replace(/^"|"$/g, ''));
-			} else if (data.indexOf('4;') !== 0) {
+			} else if (data.indexOf('4;') === 0) {
+				// OSC 9;4;state;percent: the progress of a program (Windows Terminal convention).
+				var parts = data.split(';');
+				var state = parseInt(parts[1], 10);
+				var percent = parseInt(parts[2], 10);
+				javaProgress(isNaN(state) ? 0 : state, isNaN(percent) ? -1 : percent);
+			} else {
 				javaAttention();
 			}
 			return true;
