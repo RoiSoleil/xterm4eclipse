@@ -6,7 +6,8 @@ import org.eclipse.ui.IMemento;
 import org.eclipse.ui.XMLMemento;
 
 /**
- * Recreates the input of a terminal of the editor area when Eclipse restarts.
+ * Recreates the input of a terminal of the editor area saved by version 0.1, which {@link XtermEditor}
+ * turns into a view.
  */
 public class XtermEditorInputFactory implements IElementFactory {
 

@@ -70,7 +70,6 @@ import org.eclipse.ui.IURIEditorInput;
 import org.eclipse.ui.IViewSite;
 import org.eclipse.ui.IWorkbench;
 import org.eclipse.ui.IWorkbenchPage;
-import org.eclipse.ui.IWorkbenchPart;
 import org.eclipse.ui.IWorkbenchPartConstants;
 import org.eclipse.ui.IWorkbenchPartReference;
 import org.eclipse.ui.PartInitException;
@@ -115,8 +114,9 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	private static long lastSecondaryId;
 	/** Text that "Run Selected Text in Terminal" sends to the view that is about to be created. */
 	private static String nextInput;
-	/** The terminal that moves into the part that is about to be created. */
-	static TerminalTransfer nextTransfer;
+	/** Name and saved screen of a terminal of an earlier version that comes back as a view. */
+	private static String nextName;
+	private static byte[] nextHistory;
 	/** The terminal the user worked in last, where "Run Selected Text in Terminal" runs the text. */
 	private static XtermView lastActive;
 
@@ -163,13 +163,6 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	/** The page of the terminal, the only one the browser may show. */
 	private File pageFile;
 	private long sessionStart;
-	/** The part that shows this terminal: the view itself, or the editor that embeds it. */
-	private IWorkbenchPart host = this;
-	/** A terminal moving into this part, until its page is ready to show it. */
-	private TerminalTransfer transfer;
-	/** What the user typed before the shell of a moving terminal was taken. */
-	private final ByteArrayOutputStream earlyInput = new ByteArrayOutputStream();
-	private static final int MAX_EARLY_INPUT = 64 * 1024;
 	/** Screen content saved before the last Eclipse shutdown, replayed once when the view opens. */
 	private byte[] restoredContent;
 	private File workingDirectory;
@@ -177,6 +170,8 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	private File reportedDirectory;
 	/** Text to run once the shell has started. */
 	private String pendingInput;
+	/** Moves the view to the editor area, or back to the views. */
+	private Action moveAction;
 	private int cols = 80;
 	private int rows = 24;
 	private boolean keyFilterDisabled;
@@ -194,16 +189,18 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	private final IPartListener2 partListener = new IPartListener2() {
 		@Override
 		public void partActivated(IWorkbenchPartReference ref) {
-			if (ref.getPart(false) == host) {
+			if (ref.getPart(false) == XtermView.this) {
 				lastActive = XtermView.this;
 				setKeyFilterEnabled(false);
 				clearDone();
+				// The user may also have dragged the view to or from the editor area.
+				updateMoveAction();
 			}
 		}
 
 		@Override
 		public void partDeactivated(IWorkbenchPartReference ref) {
-			if (ref.getPart(false) == host) {
+			if (ref.getPart(false) == XtermView.this) {
 				setKeyFilterEnabled(true);
 			}
 		}
@@ -214,22 +211,18 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		super.init(site, memento);
 		// Opened by the user: the state that Eclipse may still hold for this view from an earlier
 		// session must not override the shell and directory just chosen.
-		transfer = nextTransfer;
-		nextTransfer = null;
-		boolean requested = nextCommandLine != null || transfer != null;
+		boolean requested = nextCommandLine != null;
 		pendingInput = nextInput;
 		nextInput = null;
-		if (transfer != null) {
-			commandLine = transfer.commandLine;
-			workingDirectory = transfer.directory != null && transfer.directory.isDirectory() ? transfer.directory : null;
-			customName = transfer.name;
-			nextCommandLine = null;
-			nextDirectory = null;
-		} else if (requested) {
+		if (requested) {
 			commandLine = nextCommandLine;
 			nextCommandLine = null;
 			workingDirectory = nextDirectory;
 			nextDirectory = null;
+			customName = nextName;
+			nextName = null;
+			restoredContent = nextHistory;
+			nextHistory = null;
 		} else if (memento != null && memento.getString(MEMENTO_SHELL) != null) {
 			commandLine = memento.getString(MEMENTO_SHELL);
 		} else {
@@ -318,7 +311,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		browser.addOpenWindowListener(event -> event.required = true);
 		// The java* functions only exist in the page once it is loaded, so the page waits for us.
 		browser.addProgressListener(
-				ProgressListener.completedAdapter(event -> browser.execute("xtermInit(" + config() + "," + replay() + ")"))); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+				ProgressListener.completedAdapter(event -> browser.execute("xtermInit(" + config() + ")"))); //$NON-NLS-1$ //$NON-NLS-2$
 		try {
 			// One file per plug-in version, shared by all the terminals.
 			Path page = WebPage.materialize(
@@ -655,22 +648,18 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		};
 		getViewSite().getActionBars().getMenuManager().add(rename);
 
-		boolean inEditor = host instanceof XtermEditor;
-		Action move = new Action(inEditor ? "Move to the Terminal View" : "Move to the Editor Area") { //$NON-NLS-1$ //$NON-NLS-2$
+		moveAction = new Action() {
 			@Override
 			public void run() {
-				if (host instanceof XtermEditor editor) {
-					moveToView(editor);
+				if (isInEditorArea()) {
+					moveToViews();
 				} else {
-					moveToEditor();
+					moveToEditorArea();
 				}
 			}
 		};
-		move.setToolTipText(inEditor ? "Move this terminal, with its running shell, back to the Xterm view" //$NON-NLS-1$
-				: "Move this terminal, with its running shell, to the editor area"); //$NON-NLS-1$
-		move.setImageDescriptor(ImageDescriptor.createFromFile(XtermView.class,
-				inEditor ? "/icons/move-to-view.png" : "/icons/move-to-editor.png")); //$NON-NLS-1$ //$NON-NLS-2$
-		toolBar.add(move);
+		toolBar.add(moveAction);
+		updateMoveAction();
 
 		IMenuManager viewMenu = getViewSite().getActionBars().getMenuManager();
 		Action find = new Action("Find\u2026\t" + (IS_MAC ? "\u2318F" : "Ctrl+Shift+F")) { //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
@@ -683,102 +672,66 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		viewMenu.add(find);
 	}
 
-	/** Called by the editor that embeds this terminal, before {@link #init}. */
-	void embedIn(XtermEditor editor) {
-		host = editor;
+	/**
+	 * Shows the move action that fits where the view is now: to the editor area, or back among the
+	 * other views.
+	 */
+	private void updateMoveAction() {
+		if (moveAction == null) {
+			return;
+		}
+		boolean inEditorArea = isInEditorArea();
+		moveAction.setText(inEditorArea ? "Move Back to the Views" : "Move to the Editor Area"); //$NON-NLS-1$ //$NON-NLS-2$
+		moveAction.setToolTipText(inEditorArea ? "Move this terminal back among the views" //$NON-NLS-1$
+				: "Move this terminal to the editor area, next to the editors"); //$NON-NLS-1$
+		moveAction.setImageDescriptor(ImageDescriptor.createFromFile(XtermView.class,
+				inEditorArea ? "/icons/move-to-view.png" : "/icons/move-to-editor.png")); //$NON-NLS-1$ //$NON-NLS-2$
+		moveAction.setEnabled(canMove());
 	}
 
-	/** @return the part that shows this terminal: this view, or the editor that embeds it */
-	IWorkbenchPart host() {
-		return host;
+	/** @return {@code true} if the view is in the editor area of the window */
+	boolean isInEditorArea() {
+		try {
+			return PartMover.isInEditorArea(getSite());
+		} catch (LinkageError | RuntimeException e) {
+			return false;
+		}
+	}
+
+	private boolean canMove() {
+		try {
+			return PartMover.canMove(getSite());
+		} catch (LinkageError | RuntimeException e) {
+			// Not in an Eclipse 4 workbench.
+			return false;
+		}
 	}
 
 	/**
-	 * Lets the shell go, to show it in another part.
-	 *
-	 * @return the terminal on its way; its session is {@code null} if the shell had already ended
+	 * Moves this view, as it is (same shell, same screen), to the editor area, like dragging its tab
+	 * there.
 	 */
-	TerminalTransfer detach() {
-		PtySession current = session;
-		boolean alive = current != null && current.isAlive();
-		String screen = ""; //$NON-NLS-1$
-		if (browser != null && !browser.isDisposed()) {
-			Object snapshot = browser.evaluate("return window.xtermSnapshot ? xtermSnapshot() : ''"); //$NON-NLS-1$
-			screen = snapshot instanceof String text ? text : ""; //$NON-NLS-1$
-		}
-		TerminalTransfer moving = new TerminalTransfer(alive ? current : null, screen, cols, rows, commandLine,
-				currentDirectory(), customName, sessionStart);
-		moving.attention = activity == Activity.DONE;
-		if (alive) {
-			// From now on the shell belongs to the transfer: closing this part must not end it.
-			session = null;
-			lastBusy = false;
-			firePropertyChange(IWorkbenchPartConstants.PROP_DIRTY);
-		}
-		return moving;
+	void moveToEditorArea() {
+		move(true);
 	}
 
-	/** Takes back a shell that could not move to another part. */
-	void reattach(TerminalTransfer moving) {
-		if (moving.session == null) {
-			return;
-		}
-		session = moving.session;
-		// The screen is still here: only what the shell printed meanwhile is shown.
-		moving.handOver(this, data -> append(null, data));
-		firePropertyChange(IWorkbenchPartConstants.PROP_DIRTY);
+	/** Moves this view back among the views, where it came from if that place still exists. */
+	void moveToViews() {
+		move(false);
 	}
 
-	/** Moves this terminal, with its running shell and its screen, to an editor. */
-	void moveToEditor() {
-		IWorkbenchPage page = getSite().getPage();
-		TerminalTransfer moving = detach();
-		XtermEditorInput input = new XtermEditorInput(moving);
+	private void move(boolean toEditorArea) {
+		boolean moved;
 		try {
-			page.openEditor(input, XtermEditor.ID, true);
-		} catch (PartInitException | RuntimeException e) {
-			XtermPlugin.log("Could not move the terminal to the editor area", e); //$NON-NLS-1$
+			moved = toEditorArea ? PartMover.toEditorArea(getSite()) : PartMover.toViews(getSite());
+		} catch (LinkageError | RuntimeException e) {
+			XtermPlugin.log("Could not move the terminal", e); //$NON-NLS-1$
+			moved = false;
 		}
-		if (input.takeTransfer() != null) {
-			// No editor took it (the workbench may show an error part instead): it stays here.
-			reattach(moving);
-			return;
+		if (moved) {
+			getSite().getPage().activate(this);
 		}
-		page.hideView(this);
-	}
-
-	/** Moves the terminal of an editor, with its running shell and its screen, to a view. */
-	void moveToView(XtermEditor editor) {
-		IWorkbenchPage page = getSite().getPage();
-		TerminalTransfer moving = detach();
-		nextTransfer = moving;
-		try {
-			open(page, moving.commandLine, moving.directory);
-		} catch (PartInitException | RuntimeException e) {
-			XtermPlugin.log("Could not move the terminal to the view", e); //$NON-NLS-1$
-		}
-		// A new view takes the transfer in its init.
-		boolean taken = nextTransfer == null;
-		nextTransfer = null;
-		if (!taken) {
-			reattach(moving);
-			return;
-		}
-		page.closeEditor(editor, false);
-	}
-
-	/** Closes the part that shows this terminal, once its shell has ended. */
-	private void closeHost() {
-		if (host instanceof IEditorPart editor) {
-			getSite().getPage().closeEditor(editor, false);
-		} else {
-			getSite().getPage().hideView(this);
-		}
-	}
-
-	/** The image of the tab for what the shell does, for the editor that embeds this terminal. */
-	Image activityImage() {
-		return activityImages[activity.ordinal()];
+		updateMoveAction();
 	}
 
 	private void openTerminal(String shellCommandLine) {
@@ -801,15 +754,33 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	 *            where the shell starts, or {@code null} for the project of the selection
 	 */
 	static void open(IWorkbenchPage page, String shellCommandLine, File directory) throws PartInitException {
+		open(page, shellCommandLine, directory, null, null);
+	}
+
+	/**
+	 * Opens one more terminal in the page.
+	 *
+	 * @param name
+	 *            the name the user gave to the terminal, or {@code null}
+	 * @param history
+	 *            the screen to show again, or {@code null}
+	 * @return the new terminal, or {@code null} if the page made something else of it
+	 */
+	static XtermView open(IWorkbenchPage page, String shellCommandLine, File directory, String name, byte[] history)
+			throws PartInitException {
 		nextCommandLine = shellCommandLine;
 		nextDirectory = directory != null && directory.isDirectory() ? directory : null;
+		nextName = name;
+		nextHistory = history;
 		try {
 			// The first terminal is the plain view, the next ones are numbered copies of it.
 			String secondaryId = page.findViewReference(ID) == null ? null : nextSecondaryId();
-			page.showView(ID, secondaryId, IWorkbenchPage.VIEW_ACTIVATE);
+			return page.showView(ID, secondaryId, IWorkbenchPage.VIEW_ACTIVATE) instanceof XtermView view ? view : null;
 		} finally {
 			nextCommandLine = null;
 			nextDirectory = null;
+			nextName = null;
+			nextHistory = null;
 		}
 	}
 
@@ -821,7 +792,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		XtermView target = lastActive;
 		if (target != null && target.getSite().getPage() == page && target.browser != null
 				&& !target.browser.isDisposed()) {
-			page.bringToTop(target.host());
+			page.bringToTop(target);
 			target.send(text);
 			return;
 		}
@@ -1098,10 +1069,10 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	 */
 	private void signalDone() {
 		setActivity(Activity.DONE);
-		if (getSite().getPage().getActivePart() != host) {
+		if (getSite().getPage().getActivePart() != this) {
 			if (XtermPlugin.isEnabled(XtermPlugin.PREF_FOCUS_ON_FINISH)) {
 				// Activating the view also clears the mark, see the part listener.
-				getSite().getPage().activate(host);
+				getSite().getPage().activate(this);
 				return;
 			}
 			IWorkbenchSiteProgressService progress = getSite().getService(IWorkbenchSiteProgressService.class);
@@ -1272,7 +1243,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			return;
 		}
 		browser.setVisible(true);
-		if (getSite().getPage().getActivePart() == host) {
+		if (getSite().getPage().getActivePart() == this) {
 			setFocus();
 		}
 	}
@@ -1310,19 +1281,6 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		return json.append('}').toString();
 	}
 
-	/**
-	 * The screen of a terminal that moves here, drawn again by the page at the size it had before
-	 * being fitted to this part: the escape sequences of a screen only draw it right at its size.
-	 */
-	private String replay() {
-		TerminalTransfer moving = transfer;
-		if (moving == null || moving.screen.isEmpty()) {
-			return "null"; //$NON-NLS-1$
-		}
-		return "{\"cols\":" + moving.cols + ",\"rows\":" + moving.rows + ",\"data\":\"" //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-				+ Base64.getEncoder().encodeToString(moving.screen.getBytes(StandardCharsets.UTF_8)) + "\"}"; //$NON-NLS-1$
-	}
-
 	private static double luminance(RGB rgb) {
 		return (0.2126 * rgb.red + 0.7152 * rgb.green + 0.0722 * rgb.blue) / 255;
 	}
@@ -1358,11 +1316,6 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			pending.reset();
 			pending.notifyAll();
 		}
-		if (transfer != null) {
-			adopt(transfer);
-			transfer = null;
-			return;
-		}
 		if (restoredContent != null) {
 			append(null, restoredContent);
 			append(null, "\r\n\u001b[2m[History restored]\u001b[0m\r\n".getBytes(StandardCharsets.UTF_8)); //$NON-NLS-1$
@@ -1383,37 +1336,6 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		}
 	}
 
-	/** Takes the shell of a terminal that moved here; the page has already drawn its screen. */
-	private void adopt(TerminalTransfer moving) {
-		if (moving.session == null) {
-			// The shell had ended in the old part: a new one starts here.
-			restoredContent = null;
-			sessionStart = System.currentTimeMillis();
-			startNewSession();
-		} else {
-			sessionStart = moving.sessionStart;
-			session = moving.session;
-			moving.handOver(this, data -> append(null, data));
-			// The size of the new part, and a redraw of full screen programs.
-			session.resize(cols, rows);
-		}
-		if (earlyInput.size() > 0 && session != null) {
-			session.write(earlyInput.toByteArray());
-		}
-		earlyInput.reset();
-		// The tab tells at once what the old one told: a command running, or done and not seen yet.
-		boolean busy = session != null && session.isBusy();
-		lastBusy = busy;
-		if (busy) {
-			firePropertyChange(IWorkbenchPartConstants.PROP_DIRTY);
-		}
-		if (moving.attention) {
-			setActivity(Activity.DONE);
-		} else if (busy) {
-			setActivity(Activity.RUNNING);
-		}
-	}
-
 	private void input(String data, boolean binary) {
 		if (data == null || data.isEmpty()) {
 			return;
@@ -1427,13 +1349,6 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			}
 		}
 		byte[] bytes = data.getBytes(binary ? StandardCharsets.ISO_8859_1 : StandardCharsets.UTF_8);
-		if (session == null && transfer != null) {
-			// Typed while the screen of a moving terminal is drawn: for its shell, once taken.
-			if (earlyInput.size() + bytes.length <= MAX_EARLY_INPUT) {
-				earlyInput.write(bytes, 0, bytes.length);
-			}
-			return;
-		}
 		if (session == null || !session.isAlive()) {
 			return;
 		}
@@ -1478,7 +1393,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		} else if (!display.isDisposed()) {
 			display.asyncExec(() -> {
 				if (!browser.isDisposed() && source == session && !workbench().isClosing()) {
-					closeHost();
+					getSite().getPage().hideView(this);
 				}
 			});
 		}
@@ -1619,11 +1534,6 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		if (session != null) {
 			session.dispose();
 			session = null;
-		}
-		if (transfer != null && transfer.session != null) {
-			// Closed before its page could take the shell that moved here: nobody else will.
-			transfer.session.dispose();
-			transfer = null;
 		}
 		if (clipboard != null) {
 			clipboard.dispose();

@@ -35,7 +35,7 @@ final class PtySession {
 	private final OutputStream stdin;
 	private final ExecutorService writer = Executors.newSingleThreadExecutor(r -> daemon(r, "Xterm PTY writer")); //$NON-NLS-1$
 	private volatile boolean alive = true;
-	private volatile Listener listener;
+	private Listener listener;
 
 	/** How long the output may keep coming after the shell has exited. */
 	private static final long DRAIN_MILLIS = 500;
@@ -51,14 +51,6 @@ final class PtySession {
 		this.listener = listener;
 		reader.start();
 		daemon(() -> awaitExit(reader), "Xterm PTY exit watcher").start(); //$NON-NLS-1$
-	}
-
-	/**
-	 * Gives the output and the exit of the shell to another listener, when the terminal moves to
-	 * another part. The new listener must take over all that the old one received after this call.
-	 */
-	void setListener(Listener newListener) {
-		listener = newListener;
 	}
 
 	boolean isAlive() {

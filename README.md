@@ -48,10 +48,10 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
   a URL opens it in the browser.
 - *Rename…* in the view menu gives the terminal a fixed name, kept after a restart (the titles set by
   programs then only go to the tool tip; an empty name brings them back).
-- *Move to the Editor Area* / *Move to the Terminal View* (tool bar): a terminal moves between the
-  view and the editor area with its running shell and its screen, full screen programs such as
-  Claude Code or vim included, keeping its icon and badge. Terminals of the editor area also come
-  back after a restart.
+- *Move to the Editor Area* / *Move Back to the Views* (tool bar): the terminal view moves to the
+  editor area, next to the active editor, and back to where it came from, as when its tab is dragged
+  there. It is the same view: the shell, the program and the screen stay as they are. Eclipse keeps
+  it there after a restart.
 - Find in the terminal (Ctrl+Shift+F, Cmd+F on macOS, or *Find…* in the view menu): every match is
   highlighted, Enter / Shift+Enter go to the next / previous one, with case, whole word and regular
   expression options.
