@@ -274,7 +274,8 @@ class XtermViewTest {
 		await("exit message", () -> screen(view).contains("Process exited with code 3"));
 		assertTrue(screen(view).contains("broken"));
 		assertEquals(0, workbench.page.count("hideView"));
-		type(view, "ignored\r");
+		// Typing does nothing in a terminal that has ended, except Enter, which starts it again.
+		type(view, "ignored");
 
 		// Without a live shell the directory announced through OSC 7 is the one remembered.
 		view.browser.execute("javaDirectory('file:///usr/lib'); javaDirectory('/does/not/exist'); javaDirectory('')");
