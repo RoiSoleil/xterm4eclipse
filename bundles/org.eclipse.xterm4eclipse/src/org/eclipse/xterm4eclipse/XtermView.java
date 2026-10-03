@@ -51,6 +51,7 @@ import org.eclipse.swt.browser.BrowserFunction;
 import org.eclipse.swt.browser.LocationListener;
 import org.eclipse.swt.browser.ProgressListener;
 import org.eclipse.swt.dnd.Clipboard;
+import org.eclipse.swt.dnd.DND;
 import org.eclipse.swt.dnd.TextTransfer;
 import org.eclipse.swt.dnd.Transfer;
 import org.eclipse.swt.graphics.FontData;
@@ -408,6 +409,23 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			Object text = clipboard.getContents(TextTransfer.getInstance());
 			return text instanceof String ? text : ""; //$NON-NLS-1$
 		});
+		function("javaPastePrimary", args -> { //$NON-NLS-1$
+			Object text = clipboard.getContents(TextTransfer.getInstance(), DND.SELECTION_CLIPBOARD);
+			return text instanceof String ? text : ""; //$NON-NLS-1$
+		});
+		function("javaSelected", args -> { //$NON-NLS-1$
+			String text = args.length > 0 && args[0] instanceof String value ? value : ""; //$NON-NLS-1$
+			if (!text.isEmpty()) {
+				if (!IS_WINDOWS && !IS_MAC) {
+					clipboard.setContents(new Object[] {text}, new Transfer[] {TextTransfer.getInstance()},
+							DND.SELECTION_CLIPBOARD);
+				}
+				if (XtermPlugin.isEnabled(XtermPlugin.PREF_COPY_ON_SELECT)) {
+					clipboard.setContents(new Object[] {text}, new Transfer[] {TextTransfer.getInstance()});
+				}
+			}
+			return null;
+		});
 		function("javaDrop", args -> { //$NON-NLS-1$
 			List<String> paths = droppedPaths((String) args[0]);
 			if (paths.isEmpty()) {
@@ -658,6 +676,15 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			}
 		};
 		getViewSite().getActionBars().getMenuManager().add(rename);
+
+		Action selectAll = new Action("Select All") { //$NON-NLS-1$
+			@Override
+			public void run() {
+				browser.execute("window.xtermSelectAll && xtermSelectAll()"); //$NON-NLS-1$
+				setFocus();
+			}
+		};
+		getViewSite().getActionBars().getMenuManager().add(selectAll);
 
 		Action restartAction = new Action("Restart") { //$NON-NLS-1$
 			@Override

@@ -29,7 +29,7 @@ class XtermPreferencePageTest {
 
 	static void resetPreferences() {
 		for (String key : new String[] {XtermPlugin.PREF_DEFAULT_SHELL, XtermPlugin.PREF_FOCUS_ON_FINISH,
-				XtermPlugin.PREF_RESTORE_HISTORY, XtermPlugin.PREF_ECLIPSE_SHORTCUTS, XtermPlugin.PREF_WARN_MULTI_LINE_PASTE}) {
+				XtermPlugin.PREF_RESTORE_HISTORY, XtermPlugin.PREF_ECLIPSE_SHORTCUTS, XtermPlugin.PREF_WARN_MULTI_LINE_PASTE, XtermPlugin.PREF_COPY_ON_SELECT}) {
 			XtermPlugin.preferences().setToDefault(key);
 		}
 	}
@@ -49,7 +49,8 @@ class XtermPreferencePageTest {
 		List<Button> checkboxes = new ArrayList<>();
 		List<Text> texts = new ArrayList<>();
 		collect(page.getControl(), checkboxes, texts);
-		assertEquals(3, checkboxes.size());
+		assertEquals(4, checkboxes.size());
+		assertFalse(checkboxes.get(3).getSelection(), "no copy on select by default");
 		assertTrue(checkboxes.get(2).getSelection(), "multi-line paste confirmed by default");
 		assertEquals(2, texts.size());
 		assertEquals(EclipseShortcuts.DEFAULTS, texts.get(1).getText());
@@ -61,12 +62,14 @@ class XtermPreferencePageTest {
 		toggle(checkboxes.get(0), true);
 		toggle(checkboxes.get(1), false);
 		toggle(checkboxes.get(2), false);
+		toggle(checkboxes.get(3), true);
 		assertTrue(page.performOk());
 
 		assertEquals("/usr/bin/fish", ShellProfiles.defaultCommandLine());
 		assertTrue(XtermPlugin.isEnabled(XtermPlugin.PREF_FOCUS_ON_FINISH));
 		assertFalse(XtermPlugin.isEnabled(XtermPlugin.PREF_RESTORE_HISTORY));
 		assertFalse(XtermPlugin.isEnabled(XtermPlugin.PREF_WARN_MULTI_LINE_PASTE));
+		assertTrue(XtermPlugin.isEnabled(XtermPlugin.PREF_COPY_ON_SELECT));
 		assertEquals("M1+3", XtermPlugin.preference(XtermPlugin.PREF_ECLIPSE_SHORTCUTS));
 	}
 

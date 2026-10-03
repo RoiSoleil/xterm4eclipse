@@ -57,6 +57,8 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
 - Find in the terminal (Ctrl+Shift+F, Cmd+F on macOS, or *Find…* in the view menu): every match is
   highlighted, Enter / Shift+Enter go to the next / previous one, with case, whole word and regular
   expression options.
+- On Linux the selection is the PRIMARY selection and the middle button pastes it (unless the program
+  tracks the mouse). *Copy on select* in the preferences; *Select All* in the view menu.
 - A paste of several lines is confirmed first (paste, paste as one line, cancel) when the shell
   would run each line at once, without bracketed paste (cmd.exe, sh...), as in VS Code.
 - Pasted, dropped and sent texts are typed as text: their control characters (escape sequences) are

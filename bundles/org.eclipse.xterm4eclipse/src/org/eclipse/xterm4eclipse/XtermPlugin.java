@@ -37,6 +37,8 @@ final class XtermPlugin {
 	static final String PREF_ECLIPSE_SHORTCUTS = "eclipseShortcuts"; //$NON-NLS-1$
 	/** Whether a paste of several lines is confirmed when the shell would run each line at once. */
 	static final String PREF_WARN_MULTI_LINE_PASTE = "warnMultiLinePaste"; //$NON-NLS-1$
+	/** Whether the selection goes to the clipboard as soon as it is made. */
+	static final String PREF_COPY_ON_SELECT = "copyOnSelect"; //$NON-NLS-1$
 
 	private static final Bundle BUNDLE = FrameworkUtil.getBundle(XtermPlugin.class);
 	private static IPreferenceStore preferences;
@@ -67,6 +69,7 @@ final class XtermPlugin {
 			preferences.setDefault(PREF_RESTORE_HISTORY, true);
 			preferences.setDefault(PREF_ECLIPSE_SHORTCUTS, EclipseShortcuts.DEFAULTS);
 			preferences.setDefault(PREF_WARN_MULTI_LINE_PASTE, true);
+			preferences.setDefault(PREF_COPY_ON_SELECT, false);
 		}
 		return preferences;
 	}

@@ -48,6 +48,7 @@ import org.eclipse.jface.viewers.ISelection;
 import org.eclipse.jface.viewers.StructuredSelection;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.dnd.Clipboard;
+import org.eclipse.swt.dnd.DND;
 import org.eclipse.swt.dnd.TextTransfer;
 import org.eclipse.swt.dnd.Transfer;
 import org.eclipse.swt.graphics.Color;
@@ -715,6 +716,63 @@ class XtermViewTest {
 	private static void pasteKeys(XtermView view) {
 		view.browser.execute("document.querySelector('.xterm-helper-textarea').dispatchEvent(new KeyboardEvent('keydown', "
 				+ "{key: 'V', code: 'KeyV', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true}))");
+	}
+
+	@Test
+	void selectionIsThePrimarySelectionAndTheMiddleButtonPastesIt() throws Exception {
+		Clipboard clipboard = new Clipboard(TestWorkbench.DISPLAY);
+		Object previous = clipboard.getContents(TextTransfer.getInstance());
+		try {
+			clipboard.setContents(new Object[] {"untouched"}, new Transfer[] {TextTransfer.getInstance()});
+			XtermView view = open();
+			run(view, "clear; echo select-me", "select-me\n");
+			menuAction("Select All").run();
+			await("primary selection", () -> String.valueOf(clipboard.getContents(TextTransfer.getInstance(),
+					DND.SELECTION_CLIPBOARD)).contains("select-me"));
+			assertEquals("untouched", clipboard.getContents(TextTransfer.getInstance()), "the clipboard only on request");
+
+			// Copy on select, when the user asked for it.
+			XtermPlugin.preferences().setValue(XtermPlugin.PREF_COPY_ON_SELECT, true);
+			view.browser.execute("xtermSelectAll()");
+			await("clipboard", () -> String.valueOf(clipboard.getContents(TextTransfer.getInstance())).contains("select-me"));
+
+			// The middle button pastes the primary selection.
+			clipboard.setContents(new Object[] {"echo primary-$((1+1))"}, new Transfer[] {TextTransfer.getInstance()},
+					DND.SELECTION_CLIPBOARD);
+			view.browser.execute("document.querySelector('#terminal').dispatchEvent(new MouseEvent('mouseup', "
+					+ "{bubbles: true, cancelable: true, button: 1}))");
+			await("pasted", () -> screen(view).contains("echo primary-$((1+1))"));
+			type(view, "\r");
+			await("run", () -> screen(view).contains("\nprimary-2\n"));
+
+			// Not when the program tracks the mouse: the click is for it.
+			run(view, "printf '\\033[?1000h'; echo tracking", "\ntracking\n");
+			view.browser.execute("document.querySelector('#terminal').dispatchEvent(new MouseEvent('mouseup', "
+					+ "{bubbles: true, cancelable: true, button: 1}))");
+			pump(500);
+			assertEquals(1, screen(view).split("echo primary", -1).length - 1);
+		} finally {
+			if (previous != null) {
+				clipboard.setContents(new Object[] {previous}, new Transfer[] {TextTransfer.getInstance()});
+			} else {
+				clipboard.clearContents();
+			}
+			clipboard.dispose();
+		}
+	}
+
+	@Test
+	void pasteOfTheBrowserItselfGoesThroughTheSameChecks() throws Exception {
+		XtermView view = open();
+		// As the browser would send it for a paste of its own: the hostile text must not run.
+		view.browser.execute("var data = new DataTransfer(); data.setData('text/plain', 'echo safe\\u001b[201~echo HACK$((1+1))\\r');"
+				+ "document.querySelector('.xterm-helper-textarea').dispatchEvent(new ClipboardEvent('paste', "
+				+ "{clipboardData: data, bubbles: true, cancelable: true}))");
+		pump(1000);
+		assertFalse(screen(view).contains("HACK2"), "nothing runs before Enter");
+		await("pasted", () -> screen(view).contains("echo safe[201~echo HACK"));
+		type(view, "\r");
+		await("one command", () -> screen(view).contains("safe[201~echo HACK2"));
 	}
 
 	@Test
