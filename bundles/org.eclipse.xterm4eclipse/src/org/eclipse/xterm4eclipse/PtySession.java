@@ -87,7 +87,7 @@ final class PtySession {
 			return;
 		}
 		for (byte b : data) {
-			if (b == '\r') {
+			if (b == '\r' || b == '\n') {
 				commandEntered = true;
 				break;
 			}

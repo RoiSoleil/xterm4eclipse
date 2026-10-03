@@ -1507,6 +1507,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		if (restoredContent != null) {
 			append(null, endOfContent(new String(restoredContent, StandardCharsets.UTF_8)).getBytes(StandardCharsets.UTF_8));
 			append(null, "\r\n\u001b[2m[History restored]\u001b[0m\r\n".getBytes(StandardCharsets.UTF_8)); //$NON-NLS-1$
+			keepAboveTheNewShell();
 			restoredContent = null;
 		}
 		sessionStart = System.currentTimeMillis();
@@ -1620,6 +1621,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			workingDirectory = directory;
 		}
 		append(null, "\r\n\u001b[2m[Restarted]\u001b[0m\r\n".getBytes(StandardCharsets.UTF_8)); //$NON-NLS-1$
+		keepAboveTheNewShell();
 		ended = false;
 		lastBusy = false;
 		showProgress(0);
@@ -1631,6 +1633,17 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		startNewSession();
 		firePropertyChange(IWorkbenchPartConstants.PROP_DIRTY);
 		setActivity(Activity.IDLE);
+	}
+
+	/**
+	 * Windows: the pseudo console clears the screen when the shell starts. What the screen shows
+	 * (the restored history, the end of the previous shell) goes up into the scrollback first,
+	 * where the user finds it.
+	 */
+	private void keepAboveTheNewShell() {
+		if (IS_WINDOWS) {
+			append(null, "\r\n".repeat(Math.max(rows, 1)).getBytes(StandardCharsets.UTF_8)); //$NON-NLS-1$
+		}
 	}
 
 	/** Whether the tab shows that a program reports progress (OSC 9;4). */

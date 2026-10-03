@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BooleanSupplier;
@@ -45,8 +46,8 @@ final class TestWorkbench {
 	static final boolean LINUX = System.getProperty("os.name").startsWith("Linux");
 	static final boolean WINDOWS = System.getProperty("os.name").startsWith("Windows");
 	/** Two folders that exist on every system, canonical: as the shell sees them. */
-	static final File FOLDER = folder("xterm-folder");
-	static final File OTHER_FOLDER = folder("xterm-other-folder");
+	static final File FOLDER = folder("xt-a");
+	static final File OTHER_FOLDER = folder("xt-b");
 	/** The modifier of the Eclipse shortcuts (M1): Command on macOS, Ctrl elsewhere. */
 	static final String M1 = MAC ? "COMMAND" : "CTRL";
 	/** The event property of that modifier in the page. */
@@ -60,7 +61,10 @@ final class TestWorkbench {
 
 	private static File folder(String prefix) {
 		try {
-			File folder = Files.createTempDirectory(prefix).toFile().getCanonicalFile();
+			// Short paths, so that a line of the terminal holds them: the temporary folder of macOS is
+			// deep, and test.sh makes the build folder of Windows.
+			Path base = WINDOWS ? Path.of("build").toAbsolutePath() : Path.of("/tmp");
+			File folder = Files.createTempDirectory(Files.createDirectories(base), prefix).toFile().getCanonicalFile();
 			folder.deleteOnExit();
 			return folder;
 		} catch (IOException e) {
@@ -111,7 +115,11 @@ final class TestWorkbench {
 	ISelection selection;
 	Object activePart;
 
+	/** The workbench of the running test, whose terminals a timeout shows. */
+	private static TestWorkbench current;
+
 	TestWorkbench() {
+		current = this;
 		page.on("addPartListener", args -> partListeners.add((IPartListener2) args[0]));
 		page.on("removePartListener", args -> partListeners.remove(args[0]));
 		page.on("getSelection", args -> selection);
@@ -205,6 +213,21 @@ final class TestWorkbench {
 		return text == null ? "" : text.toString();
 	}
 
+	/**
+	 * The whole text of the terminal, the scrollback included: on Windows the pseudo console clears
+	 * the screen when a shell starts.
+	 */
+	static String text(XtermView view) {
+		Object serialized = view.browser.evaluate("return window.xtermSerialize ? xtermSerialize() : ''");
+		String text = serialized == null ? "" : serialized.toString();
+		// Gaps are cursor moves; then no other control sequence.
+		text = java.util.regex.Pattern.compile("\u001b\\[(\\d*)C").matcher(text)
+				.replaceAll(gap -> " ".repeat(gap.group(1).isEmpty() ? 1 : Integer.parseInt(gap.group(1))));
+		text = text.replaceAll("\u001b\\][^\u0007\u001b]*(\u0007|\u001b\\\\)", "")
+				.replaceAll("\u001b\\[[0-9;?]*[A-Za-z]", "").replaceAll("\u001b[()][A-Z0-9]", "");
+		return text.replace("\r\n", "\n").replace("\r", "");
+	}
+
 	static void type(XtermView view, String text) {
 		view.browser.execute("javaInput('" + text.replace("\\", "\\\\").replace("'", "\\'").replace("\r", "\\r") + "')");
 	}
@@ -218,7 +241,15 @@ final class TestWorkbench {
 		long deadline = System.currentTimeMillis() + millis;
 		while (!condition.getAsBoolean()) {
 			if (System.currentTimeMillis() > deadline) {
-				throw new AssertionError("Timed out waiting for: " + what);
+				StringBuilder message = new StringBuilder("Timed out waiting for: " + what);
+				if (current != null) {
+					for (XtermView view : current.views) {
+						if (view.browser != null && !view.browser.isDisposed()) {
+							message.append("\n--- terminal ").append(view.getPartName()).append(":\n").append(text(view));
+						}
+					}
+				}
+				throw new AssertionError(message.toString());
 			}
 			pump(20);
 		}

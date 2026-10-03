@@ -8,6 +8,7 @@ import static org.eclipse.xterm4eclipse.TestWorkbench.bashScript;
 import static org.eclipse.xterm4eclipse.TestWorkbench.pump;
 import static org.eclipse.xterm4eclipse.TestWorkbench.screen;
 import static org.eclipse.xterm4eclipse.TestWorkbench.shellPath;
+import static org.eclipse.xterm4eclipse.TestWorkbench.text;
 import static org.eclipse.xterm4eclipse.TestWorkbench.type;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -127,7 +128,11 @@ class XtermViewTest {
 
 	private static void run(XtermView view, String command, String expected) {
 		type(view, command + "\r");
-		await("output of " + command, () -> screen(view).contains(expected));
+		try {
+			await("output of " + command, () -> screen(view).contains(expected));
+		} catch (AssertionError e) {
+			throw new AssertionError(e.getMessage() + ", expected " + expected + " on the screen:\n" + screen(view), e);
+		}
 	}
 
 	@Test
@@ -283,7 +288,8 @@ class XtermViewTest {
 		type(view, "ignored");
 
 		// Without a live shell the directory announced through OSC 7 is the one remembered.
-		view.browser.execute("javaDirectory('file://" + OTHER_FOLDER.toURI().getPath()
+		// evaluate, not execute: the Edge of Windows runs a script later.
+		view.browser.evaluate("javaDirectory('file://" + OTHER_FOLDER.toURI().getPath()
 				+ "'); javaDirectory('/does/not/exist'); javaDirectory('')");
 		XMLMemento memento = XMLMemento.createWriteRoot("view");
 		view.saveState(memento);
@@ -304,8 +310,8 @@ class XtermViewTest {
 		pump(200);
 		assertFalse(screen(view).contains("[Restarted]"), "only Enter starts it again");
 		type(view, "\r");
-		await("started again", () -> screen(view).contains("[Restarted]"));
-		await("ended again", () -> screen(view).split("Process exited with code 4", -1).length == 3);
+		await("started again", () -> text(view).contains("[Restarted]"));
+		await("ended again", () -> text(view).split("Process exited with code 4", -1).length == 3);
 	}
 
 	@Test
@@ -333,9 +339,11 @@ class XtermViewTest {
 			}
 		});
 		run(view, "cd '" + shellPath(FOLDER) + "' && X=set && echo ready", "ready\n");
+		// On Windows the command is over at the next prompt, a moment after its output.
+		await("back at the prompt", () -> !view.isDirty());
 		menuAction("Restart").run();
-		await("restarted", () -> screen(view).contains("[Restarted]"));
-		await("new prompt", () -> screen(view).substring(screen(view).indexOf("[Restarted]")).contains("$"));
+		await("restarted", () -> text(view).contains("[Restarted]"));
+		await("new prompt", () -> text(view).substring(text(view).indexOf("[Restarted]")).contains("$"));
 		run(view, "echo x=$X in $PWD", "x= in " + shellPath(FOLDER));
 		assertEquals(0, asked[0], "nothing ran: no question");
 
@@ -348,7 +356,7 @@ class XtermViewTest {
 		confirm[0] = true;
 		view.restart();
 		assertEquals(2, asked[0]);
-		await("restarted again", () -> screen(view).split("\\[Restarted\\]", -1).length == 3);
+		await("restarted again", () -> text(view).split("\\[Restarted\\]", -1).length == 3);
 		assertFalse(view.isDirty());
 	}
 
@@ -716,7 +724,7 @@ class XtermViewTest {
 		Object previous = clipboard.getContents(TextTransfer.getInstance());
 		try {
 			XtermView view = open();
-			view.browser.execute("javaCopy(''); javaCopy('copied-by-test')");
+			view.browser.evaluate("javaCopy(''); javaCopy('copied-by-test')");
 			assertEquals("copied-by-test", clipboard.getContents(TextTransfer.getInstance()));
 			assertEquals("copied-by-test", view.browser.evaluate("return javaPaste()"));
 
@@ -949,8 +957,8 @@ class XtermViewTest {
 		ShellProfiles.setDefaultCommandLine("/bin/sh");
 		XtermView restored = new XtermView();
 		workbench.open(restored, null, memento);
-		await("restored screen", () -> screen(restored).contains("History restored"));
-		assertTrue(screen(restored).contains("marker-42"));
+		await("restored screen", () -> text(restored).contains("History restored"));
+		assertTrue(text(restored).contains("marker-42"));
 		assertEquals("bash", restored.getPartName());
 		run(restored, "echo back-in=$PWD", "back-in=" + shellPath(FOLDER));
 
@@ -972,8 +980,8 @@ class XtermViewTest {
 		workbench.closing = true;
 		XtermView restored = new XtermView();
 		workbench.open(restored, null, memento);
-		await("restored", () -> screen(restored).contains("History restored"));
-		String screen = screen(restored);
+		await("restored", () -> text(restored).contains("History restored"));
+		String screen = text(restored);
 		assertTrue(screen.indexOf("footer-line") < screen.indexOf("History restored"), screen);
 		assertTrue(screen.contains("prompt-line\nfooter-line\n"), screen);
 
@@ -1334,7 +1342,7 @@ class XtermViewTest {
 				opened.add(file.getName() + "@" + line + ":" + column);
 			}
 		});
-		run(view, "cd " + directory + " && echo \"notes.txt:2:3: warning\"; echo \"missing.txt:1 notes.txt(3,1)\"",
+		run(view, "cd '" + shellPath(directory.toFile().getCanonicalFile()) + "' && echo \"notes.txt:2:3: warning\"; echo \"missing.txt:1 notes.txt(3,1)\"",
 				"notes.txt(3,1)");
 
 		// Only the files that exist, relative to the directory the shell is in, become links.

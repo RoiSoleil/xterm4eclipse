@@ -99,7 +99,11 @@ class MoveToEditorAreaTest {
 
 	private static void run(XtermView view, String command, String expected) {
 		type(view, command + "\r");
-		await("output of " + command, () -> screen(view).contains(expected));
+		try {
+			await("output of " + command, () -> screen(view).contains(expected));
+		} catch (AssertionError e) {
+			throw new AssertionError(e.getMessage() + ", expected " + expected + " on the screen:\n" + screen(view), e);
+		}
 	}
 
 	private IAction moveAction() {
@@ -274,7 +278,7 @@ class MoveToEditorAreaTest {
 		assertSame(editor, closed.get(0));
 		XtermView view = opened.get(0);
 		assertTrue(view.isInEditorArea());
-		await("screen of the editor", () -> screen(view).contains("marker-of-the-editor"));
+		await("screen of the editor", () -> TestWorkbench.text(view).contains("marker-of-the-editor"));
 		assertEquals("my editor terminal", view.getPartName());
 		run(view, "echo in=$PWD", "in=" + TestWorkbench.shellPath(TestWorkbench.FOLDER));
 		assertFalse(Files.exists(screenFile), "read once");

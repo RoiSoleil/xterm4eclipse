@@ -34,8 +34,10 @@ class PtySessionTest implements PtySession.Listener {
 		exitCode.set(code);
 	}
 
+	/** What the shell wrote; the pseudo console of Windows moves the cursor over spaces. */
 	private synchronized String output() {
-		return received.toString(StandardCharsets.UTF_8);
+		return java.util.regex.Pattern.compile("\u001b\\[(\\d*)C").matcher(received.toString(StandardCharsets.UTF_8))
+				.replaceAll(gap -> " ".repeat(gap.group(1).isEmpty() ? 1 : Integer.parseInt(gap.group(1))));
 	}
 
 	private PtySession start(String... command) throws Exception {
