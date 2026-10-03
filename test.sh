@@ -47,9 +47,12 @@ ECLIPSE_CP=$( (find "$ECLIPSE_HOME/plugins" -maxdepth 1 -name '*.jar'; find "$EC
 # of the processor only (a fragment of macOS has those of several).
 ARCH=$(uname -m)
 [ "$ARCH" = arm64 ] && ARCH=aarch64
+# With the jar tool of the JDK: Git Bash has no unzip.
+mkdir -p build/fragments
 for fragment in "$ECLIPSE_HOME"/plugins/org.eclipse.cdt.core.{linux,macosx,win32}*.jar; do
-	[ -f "$fragment" ] && unzip -q -o -j "$fragment" "os/*/$ARCH/*" -d build/natives 2>/dev/null || true
+	[ -f "$fragment" ] && (cd build/fragments && jar xf "$fragment" os)
 done
+cp build/fragments/os/*/"$ARCH"/* build/natives/
 ls build/natives
 
 # In argument files: the class path is longer than a command line of Windows.
