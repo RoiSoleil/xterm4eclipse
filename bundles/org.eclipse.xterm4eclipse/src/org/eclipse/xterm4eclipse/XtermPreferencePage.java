@@ -55,6 +55,16 @@ public class XtermPreferencePage extends FieldEditorPreferencePage implements IW
 		addField(new BooleanFieldEditor(XtermPlugin.PREF_MAC_OPTION_IS_META,
 				"macOS: the &Option key is Meta (Option+B, Option+F... in the shell) instead of typing accents", //$NON-NLS-1$
 				getFieldEditorParent()));
+		addField(new StringFieldEditor(XtermPlugin.PREF_ENVIRONMENT,
+				"En&vironment variables of new shells, one per line (NAME=value, ${OTHER} for the value of another, -NAME to remove one):", //$NON-NLS-1$
+				40, 4, StringFieldEditor.VALIDATE_ON_KEY_STROKE, getFieldEditorParent()) {
+			@Override
+			protected boolean doCheckState() {
+				String error = ShellEnvironment.errorIn(getStringValue());
+				setErrorMessage(error);
+				return error == null;
+			}
+		});
 		addField(new StringFieldEditor(XtermPlugin.PREF_ECLIPSE_SHORTCUTS,
 				"&Eclipse shortcuts that work in the terminal (M1 is Ctrl, or Cmd on macOS):", //$NON-NLS-1$
 				getFieldEditorParent()));

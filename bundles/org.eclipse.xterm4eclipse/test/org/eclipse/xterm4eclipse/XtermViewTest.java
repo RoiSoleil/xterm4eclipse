@@ -580,6 +580,13 @@ class XtermViewTest {
 	}
 
 	@Test
+	void shellsGetTheEnvironmentVariablesOfThePreferences() throws Exception {
+		XtermPlugin.preferences().setValue(XtermPlugin.PREF_ENVIRONMENT, "XTERM_TEST=from-${HOME}\n-XTERM_ABSENT");
+		XtermView view = open();
+		run(view, "echo \"$XTERM_TEST\"", "from-" + System.getenv("HOME") + "\n");
+	}
+
+	@Test
 	void appearanceFollowsThePreferences() throws Exception {
 		XtermView view = open();
 		String defaults = options(view);

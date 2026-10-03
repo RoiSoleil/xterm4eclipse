@@ -50,6 +50,8 @@ final class XtermPlugin {
 	static final String PREF_CURSOR_BLINK = "cursorBlink"; //$NON-NLS-1$
 	/** Whether the Option key of macOS is Meta (Alt+B, Alt+F... in the shell) rather than for accents. */
 	static final String PREF_MAC_OPTION_IS_META = "macOptionIsMeta"; //$NON-NLS-1$
+	/** Environment variables of the shells, see {@link ShellEnvironment}. */
+	static final String PREF_ENVIRONMENT = "environment"; //$NON-NLS-1$
 
 	private static final Bundle BUNDLE = FrameworkUtil.getBundle(XtermPlugin.class);
 	private static IPreferenceStore preferences;
@@ -87,6 +89,7 @@ final class XtermPlugin {
 			preferences.setDefault(PREF_CURSOR_STYLE, "block"); //$NON-NLS-1$
 			preferences.setDefault(PREF_CURSOR_BLINK, true);
 			preferences.setDefault(PREF_MAC_OPTION_IS_META, false);
+			preferences.setDefault(PREF_ENVIRONMENT, ""); //$NON-NLS-1$
 		}
 		return preferences;
 	}

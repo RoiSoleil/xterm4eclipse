@@ -183,10 +183,19 @@ final class PtySession {
 	}
 
 	private static String[] environment(String[] command) {
-		return environment(command, System.getProperty("os.name", ""), System.getenv()); //$NON-NLS-1$ //$NON-NLS-2$
+		return environment(command, System.getProperty("os.name", ""), System.getenv(), //$NON-NLS-1$ //$NON-NLS-2$
+				XtermPlugin.preference(XtermPlugin.PREF_ENVIRONMENT));
 	}
 
 	static String[] environment(String[] command, String os, Map<String, String> inherited) {
+		return environment(command, os, inherited, ""); //$NON-NLS-1$
+	}
+
+	/**
+	 * @param userSetting
+	 *            the variables the user gives to the shells, see {@link ShellEnvironment}
+	 */
+	static String[] environment(String[] command, String os, Map<String, String> inherited, String userSetting) {
 		Map<String, String> env = new HashMap<>(inherited);
 		env.put("TERM", "xterm-256color"); //$NON-NLS-1$ //$NON-NLS-2$
 		env.put("COLORTERM", "truecolor"); //$NON-NLS-1$ //$NON-NLS-2$
@@ -203,6 +212,8 @@ final class PtySession {
 		} else {
 			env.putIfAbsent("LANG", "en_US.UTF-8"); //$NON-NLS-1$ //$NON-NLS-2$
 		}
+		// Last: the user may also change what is set above.
+		ShellEnvironment.apply(env, userSetting, os.toLowerCase().contains("win")); //$NON-NLS-1$
 		List<String> result = new ArrayList<>(env.size());
 		env.forEach((key, value) -> result.add(key + '=' + value));
 		return result.toArray(String[]::new);
