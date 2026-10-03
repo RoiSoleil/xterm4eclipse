@@ -118,7 +118,11 @@ final class XtermPlugin {
 		if (BUNDLE != null) {
 			Platform.getLog(BUNDLE).error(message, exception);
 		} else {
-			System.err.println(message + ": " + exception); //$NON-NLS-1$
+			// Outside of Eclipse (tests): the whole story, with the causes.
+			System.err.println(message);
+			if (exception != null) {
+				exception.printStackTrace();
+			}
 		}
 	}
 

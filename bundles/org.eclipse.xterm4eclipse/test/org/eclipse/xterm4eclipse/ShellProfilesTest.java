@@ -14,6 +14,8 @@ import java.util.Map;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class ShellProfilesTest {
@@ -61,7 +63,11 @@ class ShellProfilesTest {
 		assertEquals("bash", ShellProfiles.displayName("bash -c \"'unterminated\""));
 	}
 
+	/** The paths of a Linux machine: the files of Windows (C:\...) cannot be in its PATH or /etc/shells. */
+	private static final String UNIX_FILES_ONLY = "the simulated Linux machine needs the files of a Unix system";
+
 	@Test
+	@DisabledOnOs(value = OS.WINDOWS, disabledReason = UNIX_FILES_ONLY)
 	void unixShellsComeFromTheUserShellAndEtcShells() throws Exception {
 		Path zsh = executable(temp.resolve("usr/bin/zsh"));
 		Path duplicate = executable(temp.resolve("bin/zsh"));
@@ -163,6 +169,7 @@ class ShellProfilesTest {
 	}
 
 	@Test
+	@DisabledOnOs(value = OS.WINDOWS, disabledReason = UNIX_FILES_ONLY)
 	void claudeIsOfferedOnlyWhenItIsOnThePath() throws Exception {
 		Path bin = executable(temp.resolve("bin/claude")).getParent();
 		Path shells = temp.resolve("none");
@@ -178,7 +185,10 @@ class ShellProfilesTest {
 						.filter(profile -> profile.name().equals("Claude")).findFirst().orElseThrow().commandLine());
 		assertTrue(ShellProfiles.detect(host("Linux", Map.of("HOME", temp.toString()), shells)).stream()
 				.noneMatch(profile -> profile.name().equals("Claude")), "not on the PATH: not offered");
+	}
 
+	@Test
+	void claudeIsOfferedOnWindowsWhenItIsOnThePath() throws Exception {
 		Path native_ = Files.createDirectories(temp.resolve("local bin"));
 		Files.createFile(native_.resolve("claude.exe"));
 		List<ShellProfiles.Profile> windows = ShellProfiles.detect(host("Windows 11", Map.of("PATH", native_.toString()), null));
@@ -220,9 +230,12 @@ class ShellProfilesTest {
 
 	@Test
 	void programsAreNotTakenFromRelativeEntriesOfThePath() throws Exception {
-		Path bin = executable(temp.resolve("bin/claude")).getParent();
+		// Under the current directory: on Windows the temporary folder may be on another drive.
+		Path here = Path.of("").toAbsolutePath();
+		Path under = Files.createTempDirectory(here, "xterm-relative");
+		Path bin = executable(under.resolve("bin/claude")).getParent();
 		executable(bin.resolve("claude.exe"));
-		String relative = Path.of("").toAbsolutePath().relativize(bin).toString();
+		String relative = here.relativize(bin).toString();
 		assertTrue(new File(relative, "claude").isFile(), "the relative entry does lead to the program");
 		Path shells = temp.resolve("none");
 		assertTrue(ShellProfiles.detect(host("Linux", Map.of("PATH", relative + "::."), shells)).stream()
@@ -242,6 +255,11 @@ class ShellProfilesTest {
 		assertTrue(ShellProfiles.isAbsolute(linux, "/usr/bin"));
 		assertFalse(ShellProfiles.isAbsolute(linux, ""));
 		assertFalse(ShellProfiles.isAbsolute(linux, "bin"));
+		try (var files = Files.walk(under)) {
+			for (Path file : files.sorted(java.util.Comparator.reverseOrder()).toList()) {
+				Files.delete(file);
+			}
+		}
 	}
 
 	private static Path executable(Path file) throws Exception {

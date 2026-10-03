@@ -1,5 +1,10 @@
 package org.eclipse.xterm4eclipse;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BooleanSupplier;
@@ -37,6 +42,50 @@ final class TestWorkbench {
 
 	static final Display DISPLAY = new Display();
 
+	static final boolean MAC = System.getProperty("os.name").startsWith("Mac");
+	static final boolean LINUX = System.getProperty("os.name").startsWith("Linux");
+	static final boolean WINDOWS = System.getProperty("os.name").startsWith("Windows");
+	/** Two folders that exist on every system, canonical: as the shell sees them. */
+	static final File FOLDER = folder("xt-a");
+	static final File OTHER_FOLDER = folder("xt-b");
+	/** The modifier of the Eclipse shortcuts (M1): Command on macOS, Ctrl elsewhere. */
+	static final String M1 = MAC ? "COMMAND" : "CTRL";
+	/** The event property of that modifier in the page. */
+	static final String M1_KEY = MAC ? "metaKey" : "ctrlKey";
+	/**
+	 * The bash of the tests, at least 4.4 for bracketed paste (/bin/bash of macOS is 3.2): test.sh
+	 * gives the one of the PATH.
+	 */
+	static final String BASH = System.getProperty("xterm4eclipse.test.bash", "/bin/bash");
+	static final String SHELL = '"' + BASH + "\" --norc --noprofile";
+
+	private static File folder(String prefix) {
+		try {
+			// Short paths, so that a line of the terminal holds them: the temporary folder of macOS is
+			// deep, and test.sh makes the build folder of Windows.
+			Path base = WINDOWS ? Path.of("build").toAbsolutePath() : Path.of("/tmp");
+			File folder = Files.createTempDirectory(Files.createDirectories(base), prefix).toFile().getCanonicalFile();
+			folder.deleteOnExit();
+			return folder;
+		} catch (IOException e) {
+			throw new UncheckedIOException(e);
+		}
+	}
+
+	/** The path of the file as the bash of the tests prints it: /c/Users/me for C:\Users\me in Git Bash. */
+	static String shellPath(File file) {
+		String path = file.getPath();
+		if (WINDOWS && path.matches("[A-Za-z]:\\\\.*")) {
+			return "/" + Character.toLowerCase(path.charAt(0)) + path.substring(2).replace('\\', '/');
+		}
+		return path;
+	}
+
+	/** A command line that runs the script with the bash of the tests. */
+	static String bashScript(String script) {
+		return '"' + BASH + "\" -c \"" + script + '"';
+	}
+
 	final Fake page = new Fake();
 	/** The page of every view, the same object each time as in Eclipse. */
 	final IWorkbenchPage workbenchPage = page.as(IWorkbenchPage.class);
@@ -66,7 +115,11 @@ final class TestWorkbench {
 	ISelection selection;
 	Object activePart;
 
+	/** The workbench of the running test, whose terminals a timeout shows. */
+	private static TestWorkbench current;
+
 	TestWorkbench() {
+		current = this;
 		page.on("addPartListener", args -> partListeners.add((IPartListener2) args[0]));
 		page.on("removePartListener", args -> partListeners.remove(args[0]));
 		page.on("getSelection", args -> selection);
@@ -160,16 +213,43 @@ final class TestWorkbench {
 		return text == null ? "" : text.toString();
 	}
 
+	/**
+	 * The whole text of the terminal, the scrollback included: on Windows the pseudo console clears
+	 * the screen when a shell starts.
+	 */
+	static String text(XtermView view) {
+		Object serialized = view.browser.evaluate("return window.xtermSerialize ? xtermSerialize() : ''");
+		String text = serialized == null ? "" : serialized.toString();
+		// Gaps are cursor moves; then no other control sequence.
+		text = java.util.regex.Pattern.compile("\u001b\\[(\\d*)C").matcher(text)
+				.replaceAll(gap -> " ".repeat(gap.group(1).isEmpty() ? 1 : Integer.parseInt(gap.group(1))));
+		text = text.replaceAll("\u001b\\][^\u0007\u001b]*(\u0007|\u001b\\\\)", "")
+				.replaceAll("\u001b\\[[0-9;?]*[A-Za-z]", "").replaceAll("\u001b[()][A-Z0-9]", "");
+		return text.replace("\r\n", "\n").replace("\r", "");
+	}
+
 	static void type(XtermView view, String text) {
 		view.browser.execute("javaInput('" + text.replace("\\", "\\\\").replace("'", "\\'").replace("\r", "\\r") + "')");
 	}
 
 	/** Runs the event loop until the condition holds. */
 	static void await(String what, BooleanSupplier condition) {
-		long deadline = System.currentTimeMillis() + 15000;
+		await(what, condition, 15000);
+	}
+
+	static void await(String what, BooleanSupplier condition, long millis) {
+		long deadline = System.currentTimeMillis() + millis;
 		while (!condition.getAsBoolean()) {
 			if (System.currentTimeMillis() > deadline) {
-				throw new AssertionError("Timed out waiting for: " + what);
+				StringBuilder message = new StringBuilder("Timed out waiting for: " + what);
+				if (current != null) {
+					for (XtermView view : current.views) {
+						if (view.browser != null && !view.browser.isDisposed()) {
+							message.append("\n--- terminal ").append(view.getPartName()).append(":\n").append(text(view));
+						}
+					}
+				}
+				throw new AssertionError(message.toString());
 			}
 			pump(20);
 		}

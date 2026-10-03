@@ -6,15 +6,17 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 
+import org.eclipse.cdt.utils.pty.ConPTY;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
 class PtySessionTest implements PtySession.Listener {
 
@@ -32,13 +34,20 @@ class PtySessionTest implements PtySession.Listener {
 		exitCode.set(code);
 	}
 
+	/** What the shell wrote; the pseudo console of Windows moves the cursor over spaces. */
 	private synchronized String output() {
-		return received.toString(StandardCharsets.UTF_8);
+		return java.util.regex.Pattern.compile("\u001b\\[(\\d*)C").matcher(received.toString(StandardCharsets.UTF_8))
+				.replaceAll(gap -> " ".repeat(gap.group(1).isEmpty() ? 1 : Integer.parseInt(gap.group(1))));
 	}
 
 	private PtySession start(String... command) throws Exception {
-		session = new PtySession(command, new File("/tmp"), 100, 30, this);
+		session = new PtySession(command, TestWorkbench.FOLDER, 100, 30, this);
 		return session;
+	}
+
+	/** The bash of the tests, without the settings of the user. */
+	private PtySession startShell() throws Exception {
+		return start(TestWorkbench.BASH, "--norc", "--noprofile");
 	}
 
 	private void send(String text) {
@@ -60,9 +69,19 @@ class PtySessionTest implements PtySession.Listener {
 		}
 	}
 
+	/**
+	 * The pseudo console of Windows, which the pseudo terminals of CDT use there. Outside of Eclipse
+	 * CDT cannot report why it does not start: this test does.
+	 */
+	@Test
+	@EnabledOnOs(OS.WINDOWS)
+	void pseudoConsoleOfWindowsStarts() throws Exception {
+		new ConPTY().close();
+	}
+
 	@Test
 	void shellRunsInATerminalOfTheRequestedSize() throws Exception {
-		start("/bin/sh");
+		startShell();
 		send("stty size; echo term=$TERM color=$COLORTERM é\n");
 		await("command output", () -> output().contains("term=xterm-256color color=truecolor é"));
 		assertTrue(output().contains("30 100"), output());
@@ -75,7 +94,7 @@ class PtySessionTest implements PtySession.Listener {
 
 	@Test
 	void busyWhileACommandRunsInTheForeground() throws Exception {
-		start("/bin/bash", "--norc");
+		startShell();
 		await("prompt", () -> output().contains("$"));
 		assertFalse(session.isBusy());
 		send("sleep 1\n");
@@ -85,15 +104,20 @@ class PtySessionTest implements PtySession.Listener {
 
 	@Test
 	void currentDirectoryFollowsTheShell() throws Exception {
-		start("/bin/sh");
-		assertEquals(new File("/tmp").getCanonicalFile(), session.currentDirectory().getCanonicalFile());
-		send("cd /usr\n");
-		await("cd", () -> new File("/usr").equals(session.currentDirectory()));
+		startShell();
+		if (TestWorkbench.WINDOWS) {
+			// Windows does not tell: the view follows what the shell announces.
+			assertNull(session.currentDirectory());
+			return;
+		}
+		assertEquals(TestWorkbench.FOLDER, session.currentDirectory().getCanonicalFile());
+		send("cd '" + TestWorkbench.OTHER_FOLDER + "'\n");
+		await("cd", () -> TestWorkbench.OTHER_FOLDER.equals(session.currentDirectory()));
 	}
 
 	@Test
 	void exitIsReportedWithItsCodeAfterTheOutput() throws Exception {
-		start("/bin/sh");
+		startShell();
 		send("echo bye; exit 7\n");
 		await("exit", () -> exitCode.get() != null);
 		assertEquals(7, exitCode.get());
@@ -108,7 +132,7 @@ class PtySessionTest implements PtySession.Listener {
 	@Test
 	void exitIsReportedEvenIfABackgroundJobKeepsTheTerminalOpen() throws Exception {
 		// The same situation as on Windows, where the stream of the terminal outlives the shell.
-		start("/bin/sh");
+		startShell();
 		send("sleep 20 &\n");
 		send("exit 4\n");
 		await("exit", () -> exitCode.get() != null);
@@ -117,7 +141,7 @@ class PtySessionTest implements PtySession.Listener {
 
 	@Test
 	void disposeKillsTheShellWithoutReportingAnExit() throws Exception {
-		start("/bin/sh");
+		startShell();
 		await("alive", session::isAlive);
 		session.dispose();
 		assertFalse(session.isAlive());
@@ -147,5 +171,22 @@ class PtySessionTest implements PtySession.Listener {
 		List<String> powershell = List.of(PtySession.environment(new String[] {"pwsh.exe"}, "Windows 11", Map.of()));
 		assertTrue(powershell.stream().noneMatch(entry -> entry.startsWith("PROMPT=")));
 		assertTrue(powershell.contains("CHERE_INVOKING=1"), "Git Bash stays in the directory it is started in");
+	}
+
+	@Test
+	void bashOfWindowsAnnouncesItsDirectoryBeforeEachPrompt() {
+		String function = PtySession.PROMPT_FUNCTION_VARIABLE
+				+ "=() { local status=$?; printf '\\e]9;9;%s\\e\\\\' \"$PWD\"; return $status; }";
+		List<String> bash = List.of(PtySession.environment(
+				new String[] {"C:\\Program Files\\Git\\usr\\bin\\bash.exe", "--login"}, "Windows 11", Map.of()));
+		assertTrue(bash.contains(function), bash.toString());
+		assertTrue(bash.contains("PROMPT_COMMAND=__xterm4eclipse_prompt"));
+		// Before the one of the user, which still runs.
+		List<String> own = List.of(PtySession.environment(new String[] {"bash"}, "Windows 11",
+				Map.of("PROMPT_COMMAND", "history -a")));
+		assertTrue(own.contains("PROMPT_COMMAND=__xterm4eclipse_prompt; history -a"), own.toString());
+		// Elsewhere the directory is read from the system.
+		List<String> linux = List.of(PtySession.environment(new String[] {"/bin/bash"}, "Linux", Map.of()));
+		assertTrue(linux.stream().noneMatch(entry -> entry.startsWith("PROMPT_COMMAND=") || entry.startsWith("BASH_FUNC_")));
 	}
 }

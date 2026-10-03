@@ -99,6 +99,8 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	private static final String FOCUS_OUT = "\u001b[O"; //$NON-NLS-1$
 	/** Output within this delay after a key press is its echo. */
 	private static final long ECHO_MILLIS = 1000;
+	/** A command must run at least this long to show as running, and its end to be signalled. */
+	private static final long RUNNING_MILLIS = 500;
 	/** Output must flow at least this long to count as work whose end is worth signalling. */
 	private static final long WORK_MILLIS = 2000;
 	/** Silence after which the work of a foreground program is considered finished. */
@@ -149,6 +151,10 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	private Activity activity = Activity.IDLE;
 	private ScheduledExecutorService activityPoller;
 	private volatile boolean lastBusy;
+	/** When the poller saw the current command start, or 0. */
+	private volatile long busySince;
+	/** The current command has run for {@link #RUNNING_MILLIS} at least. */
+	private volatile boolean longRunning;
 
 	/**
 	 * A program that stays in the foreground, such as Claude Code, never "finishes": the end of its
@@ -448,6 +454,9 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		});
 		function("javaDirectory", args -> { //$NON-NLS-1$
 			File directory = parseDirectory((String) args[0]);
+			if (directory != null && IS_WINDOWS) {
+				directory = new File(windowsPath(directory.getPath(), commandLine));
+			}
 			if (directory != null && directory.isDirectory()) {
 				reportedDirectory = directory;
 			}
@@ -480,7 +489,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		});
 		function("javaTitle", args -> { //$NON-NLS-1$
 			String title = (String) args[0];
-			if (title != null && !title.isBlank()) {
+			if (title != null && !title.isBlank() && !isProgramPath(title, commandLine)) {
 				setTitleToolTip(title);
 				if (customName != null) {
 					return null;
@@ -1042,17 +1051,31 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			if (display.isDisposed()) {
 				return;
 			}
-			if (busy != lastBusy) {
-				lastBusy = busy;
+			long now = System.currentTimeMillis();
+			if (!busy) {
+				busySince = 0;
+			} else if (busySince == 0) {
+				busySince = now;
+			}
+			// A command shows as running, and its end is signalled, once it has run for a while: not
+			// for every quick command that a poll happens to see.
+			boolean running = busy && now - busySince >= RUNNING_MILLIS;
+			boolean busyChanged = busy != lastBusy;
+			boolean runningChanged = running != longRunning;
+			lastBusy = busy;
+			longRunning = running;
+			if (busyChanged || runningChanged) {
 				display.asyncExec(() -> {
 					if (browser.isDisposed()) {
 						return;
 					}
 					// A running command makes the view "dirty", so that closing it asks first.
-					firePropertyChange(IWorkbenchPartConstants.PROP_DIRTY);
-					if (busy) {
+					if (busyChanged) {
+						firePropertyChange(IWorkbenchPartConstants.PROP_DIRTY);
+					}
+					if (runningChanged && running) {
 						setActivity(Activity.RUNNING);
-					} else if (activity == Activity.RUNNING) {
+					} else if (runningChanged && activity == Activity.RUNNING) {
 						signalDone();
 					}
 				});
@@ -1113,7 +1136,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	/** The user has seen the mark: back to the icon that tells what the shell is doing. */
 	private void clearDone() {
 		if (activity == Activity.DONE) {
-			setActivity(lastBusy ? Activity.RUNNING : Activity.IDLE);
+			setActivity(longRunning ? Activity.RUNNING : Activity.IDLE);
 		}
 	}
 
@@ -1201,6 +1224,62 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			}
 		}
 		return path == null || path.isEmpty() ? null : new File(path);
+	}
+
+	private static final Pattern MSYS_DRIVE = Pattern.compile("[\\\\/](?:cygdrive[\\\\/])?([A-Za-z])([\\\\/].*)?"); //$NON-NLS-1$
+
+	/**
+	 * A path announced by the bash of Git for Windows, MSYS2 or Cygwin, as Windows names it:
+	 * /c/Users/me and /cygdrive/c/Users/me are C:\Users\me, and /usr is in the installation of the
+	 * shell.
+	 *
+	 * @return the path, unchanged when it is not such a path
+	 */
+	static String windowsPath(String path, String commandLine) {
+		Matcher drive = MSYS_DRIVE.matcher(path);
+		if (drive.matches()) {
+			String rest = drive.group(2) == null ? "\\" : drive.group(2).replace('/', '\\'); //$NON-NLS-1$
+			return Character.toUpperCase(drive.group(1).charAt(0)) + ":" + rest; //$NON-NLS-1$
+		}
+		if (path.matches("[\\\\/][^\\\\/].*")) { //$NON-NLS-1$
+			String root = msysRoot(commandLine);
+			if (root != null) {
+				return root + path.replace('/', '\\');
+			}
+		}
+		return path;
+	}
+
+	/** The installation of a bash of Windows: C:\Program Files\Git for its usr\bin\bash.exe. */
+	private static String msysRoot(String commandLine) {
+		String[] arguments = ShellProfiles.parse(commandLine == null ? "" : commandLine); //$NON-NLS-1$
+		// Not File: the paths of Windows, on any system.
+		String[] parts = arguments.length == 0 ? new String[0] : arguments[0].split("[\\\\/]"); //$NON-NLS-1$
+		int bin = parts.length - 2;
+		if (bin < 1 || !parts[bin].equalsIgnoreCase("bin")) { //$NON-NLS-1$
+			return null;
+		}
+		int end = bin > 1 && parts[bin - 1].equalsIgnoreCase("usr") ? bin - 1 : bin; //$NON-NLS-1$
+		return String.join("\\", java.util.Arrays.copyOf(parts, end)); //$NON-NLS-1$
+	}
+
+	/**
+	 * @return {@code true} if the title is the path of the program the terminal runs: the pseudo
+	 *         console of Windows names its window so, which the tab already says better
+	 */
+	static boolean isProgramPath(String title, String commandLine) {
+		String[] arguments = ShellProfiles.parse(commandLine == null ? "" : commandLine); //$NON-NLS-1$
+		String path = title.strip();
+		if (arguments.length == 0 || !path.matches("([A-Za-z]:)?[\\\\/].*")) { //$NON-NLS-1$
+			return false;
+		}
+		String program = fileName(arguments[0]);
+		String name = fileName(path);
+		return name.equalsIgnoreCase(program) || name.equalsIgnoreCase(program + ".exe"); //$NON-NLS-1$
+	}
+
+	private static String fileName(String path) {
+		return path.substring(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1);
 	}
 
 	/**
@@ -1448,6 +1527,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		if (restoredContent != null) {
 			append(null, endOfContent(new String(restoredContent, StandardCharsets.UTF_8)).getBytes(StandardCharsets.UTF_8));
 			append(null, "\r\n\u001b[2m[History restored]\u001b[0m\r\n".getBytes(StandardCharsets.UTF_8)); //$NON-NLS-1$
+			keepAboveTheNewShell();
 			restoredContent = null;
 		}
 		sessionStart = System.currentTimeMillis();
@@ -1561,8 +1641,11 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			workingDirectory = directory;
 		}
 		append(null, "\r\n\u001b[2m[Restarted]\u001b[0m\r\n".getBytes(StandardCharsets.UTF_8)); //$NON-NLS-1$
+		keepAboveTheNewShell();
 		ended = false;
 		lastBusy = false;
+		busySince = 0;
+		longRunning = false;
 		showProgress(0);
 		sessionStart = System.currentTimeMillis();
 		if (current != null) {
@@ -1572,6 +1655,17 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		startNewSession();
 		firePropertyChange(IWorkbenchPartConstants.PROP_DIRTY);
 		setActivity(Activity.IDLE);
+	}
+
+	/**
+	 * Windows: the pseudo console clears the screen when the shell starts. What the screen shows
+	 * (the restored history, the end of the previous shell) goes up into the scrollback first,
+	 * where the user finds it.
+	 */
+	private void keepAboveTheNewShell() {
+		if (IS_WINDOWS) {
+			append(null, "\r\n".repeat(Math.max(rows, 1)).getBytes(StandardCharsets.UTF_8)); //$NON-NLS-1$
+		}
 	}
 
 	/** Whether the tab shows that a program reports progress (OSC 9;4). */

@@ -64,6 +64,12 @@ public class XtermPreferencePage extends FieldEditorPreferencePage implements IW
 				setErrorMessage(error);
 				return error == null;
 			}
+
+			@Override
+			protected void doStore() {
+				// The same setting on every system: the field of Windows gives its lines with \r\n.
+				getPreferenceStore().setValue(getPreferenceName(), getStringValue().replaceAll("\\R", "\n")); //$NON-NLS-1$ //$NON-NLS-2$
+			}
 		});
 		addField(new StringFieldEditor(XtermPlugin.PREF_ECLIPSE_SHORTCUTS,
 				"&Eclipse shortcuts that work in the terminal (M1 is Ctrl, or Cmd on macOS):", //$NON-NLS-1$

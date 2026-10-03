@@ -41,7 +41,7 @@ import org.junit.jupiter.api.Test;
  */
 class MoveToEditorAreaTest {
 
-	private static final String SHELL = "/bin/bash --norc --noprofile";
+	private static final String SHELL = TestWorkbench.SHELL;
 
 	private TestWorkbench workbench;
 
@@ -99,7 +99,11 @@ class MoveToEditorAreaTest {
 
 	private static void run(XtermView view, String command, String expected) {
 		type(view, command + "\r");
-		await("output of " + command, () -> screen(view).contains(expected));
+		try {
+			await("output of " + command, () -> screen(view).contains(expected));
+		} catch (AssertionError e) {
+			throw new AssertionError(e.getMessage() + ", expected " + expected + " on the screen:\n" + screen(view), e);
+		}
 	}
 
 	private IAction moveAction() {
@@ -237,7 +241,7 @@ class MoveToEditorAreaTest {
 		XMLMemento memento = XMLMemento.createWriteRoot("editor");
 		memento.putString("id", "e123");
 		memento.putString("shell", SHELL);
-		memento.putString("directory", "/usr/share");
+		memento.putString("directory", TestWorkbench.FOLDER.getPath());
 		memento.putString("name", "my editor terminal");
 		XtermEditorInput input = (XtermEditorInput) new XtermEditorInputFactory().createElement(memento);
 		assertEquals("Xterm", input.getName());
@@ -251,7 +255,7 @@ class MoveToEditorAreaTest {
 		assertTrue(input.getImageDescriptor() != null);
 		XMLMemento saved = XMLMemento.createWriteRoot("editor");
 		input.saveState(saved);
-		assertEquals("/usr/share", saved.getString("directory"));
+		assertEquals(TestWorkbench.FOLDER.getPath(), saved.getString("directory"));
 		assertEquals("e123", saved.getString("id"));
 
 		// The view opens, goes to the editor area, and the editor closes.
@@ -274,9 +278,9 @@ class MoveToEditorAreaTest {
 		assertSame(editor, closed.get(0));
 		XtermView view = opened.get(0);
 		assertTrue(view.isInEditorArea());
-		await("screen of the editor", () -> screen(view).contains("marker-of-the-editor"));
+		await("screen of the editor", () -> TestWorkbench.text(view).contains("marker-of-the-editor"));
 		assertEquals("my editor terminal", view.getPartName());
-		run(view, "echo in=$PWD", "in=/usr/share");
+		run(view, "echo in=$PWD", "in=" + TestWorkbench.shellPath(TestWorkbench.FOLDER));
 		assertFalse(Files.exists(screenFile), "read once");
 
 		editor.setFocus();

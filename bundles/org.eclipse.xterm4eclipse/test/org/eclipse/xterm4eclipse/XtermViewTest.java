@@ -1,8 +1,14 @@
 package org.eclipse.xterm4eclipse;
 
+import static org.eclipse.xterm4eclipse.TestWorkbench.FOLDER;
+import static org.eclipse.xterm4eclipse.TestWorkbench.M1;
+import static org.eclipse.xterm4eclipse.TestWorkbench.OTHER_FOLDER;
 import static org.eclipse.xterm4eclipse.TestWorkbench.await;
+import static org.eclipse.xterm4eclipse.TestWorkbench.bashScript;
 import static org.eclipse.xterm4eclipse.TestWorkbench.pump;
 import static org.eclipse.xterm4eclipse.TestWorkbench.screen;
+import static org.eclipse.xterm4eclipse.TestWorkbench.shellPath;
+import static org.eclipse.xterm4eclipse.TestWorkbench.text;
 import static org.eclipse.xterm4eclipse.TestWorkbench.type;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -82,7 +88,7 @@ import org.junit.jupiter.api.Test;
 /** Drives the real view: SWT browser, xterm.js and a shell in a PTY; only the workbench is faked. */
 class XtermViewTest {
 
-	private static final String SHELL = "/bin/bash --norc --noprofile";
+	private static final String SHELL = TestWorkbench.SHELL;
 
 	private TestWorkbench workbench;
 	private final List<Image> titleImages = new ArrayList<>();
@@ -122,7 +128,11 @@ class XtermViewTest {
 
 	private static void run(XtermView view, String command, String expected) {
 		type(view, command + "\r");
-		await("output of " + command, () -> screen(view).contains(expected));
+		try {
+			await("output of " + command, () -> screen(view).contains(expected));
+		} catch (AssertionError e) {
+			throw new AssertionError(e.getMessage() + ", expected " + expected + " on the screen:\n" + screen(view), e);
+		}
 	}
 
 	@Test
@@ -160,8 +170,8 @@ class XtermViewTest {
 		try {
 			XtermView view = new XtermView();
 			workbench.open(view, null, null);
-			pump(50);
-			assertTrue(view.browser.getVisible());
+			// The deadline reveals it, whether the page has said it is ready or not.
+			await("revealed by the deadline", () -> view.browser.getVisible(), 1000);
 			await("shell prompt", () -> screen(view).contains("$"));
 		} finally {
 			XtermView.revealTimeoutMillis = 1500;
@@ -181,16 +191,16 @@ class XtermViewTest {
 
 	@Test
 	void shellStartsInTheSelectedProject() throws Exception {
-		IProject project = new Fake().on("getLocation", args -> org.eclipse.core.runtime.Path.fromOSString("/usr/share"))
+		IProject project = new Fake().on("getLocation", args -> org.eclipse.core.runtime.Path.fromOSString(FOLDER.getPath()))
 				.as(IProject.class);
 		workbench.selection = new StructuredSelection(new Fake().on("getProject", args -> project).as(IResource.class));
 		XtermView view = open();
-		run(view, "echo in=$PWD", "in=/usr/share");
+		run(view, "echo in=$PWD", "in=" + shellPath(FOLDER));
 	}
 
 	@Test
 	void shellStartsInTheProjectOfTheActiveEditor() throws Exception {
-		IProject project = new Fake().on("getLocation", args -> org.eclipse.core.runtime.Path.fromOSString("/usr/share"))
+		IProject project = new Fake().on("getLocation", args -> org.eclipse.core.runtime.Path.fromOSString(FOLDER.getPath()))
 				.as(IProject.class);
 		IResource file = new Fake().on("getProject", args -> project).as(IResource.class);
 		IEditorInput input = new Fake().on("getAdapter", args -> args[0] == IResource.class ? file : null)
@@ -199,18 +209,18 @@ class XtermViewTest {
 		// The selection of an editor is its text, not a resource.
 		workbench.selection = new TextSelection(0, 0);
 		XtermView view = open();
-		run(view, "echo in=$PWD", "in=/usr/share");
+		run(view, "echo in=$PWD", "in=" + shellPath(FOLDER));
 	}
 
 	@Test
 	void shellStartsInTheFolderOfAnEditedFileOutsideOfTheWorkspace() throws Exception {
-		IURIEditorInput input = new Fake().on("getURI", args -> new File("/usr/lib/no-such-file.txt").toURI())
+		IURIEditorInput input = new Fake().on("getURI", args -> new File(OTHER_FOLDER, "no-such-file.txt").toURI())
 				.as(IURIEditorInput.class);
 		workbench.page.on("getActiveEditor", args -> new Fake().on("getEditorInput", a -> input).as(IEditorPart.class));
 		XtermView view = open();
-		run(view, "echo in=$PWD", "in=/usr/lib");
+		run(view, "echo in=$PWD", "in=" + shellPath(OTHER_FOLDER));
 
-		assertEquals(new File("/usr/lib"), XtermView.directoryOf(input));
+		assertEquals(OTHER_FOLDER, XtermView.directoryOf(input));
 		assertNull(XtermView.directoryOf(new Fake().on("getURI", args -> java.net.URI.create("http://example.org/a.txt"))
 				.as(IURIEditorInput.class)));
 		assertNull(XtermView.directoryOf(new Fake().on("getURI", args -> java.net.URI.create("file://server/a.txt"))
@@ -231,7 +241,7 @@ class XtermViewTest {
 			}
 			return null;
 		});
-		IURIEditorInput input = new Fake().on("getURI", args -> new File("/usr/share/file.txt").toURI())
+		IURIEditorInput input = new Fake().on("getURI", args -> new File(FOLDER, "file.txt").toURI())
 				.as(IURIEditorInput.class);
 		IEvaluationContext state = new Fake().on("getVariable", args -> ISources.ACTIVE_MENU_SELECTION_NAME.equals(args[0])
 				? new TextSelection(0, 0)
@@ -244,11 +254,11 @@ class XtermViewTest {
 				.as(IServiceLocator.class));
 		Menu menu = new Menu(new Shell(TestWorkbench.DISPLAY));
 		contribution.fill(menu, 0);
-		int bash = ShellProfiles.detect().stream().map(ShellProfiles.Profile::name).toList().indexOf("bash");
+		int bash = bashIndex(ShellProfiles.detect());
 		menu.getItem(bash).notifyListeners(SWT.Selection, new Event());
 		assertEquals(1, opened.size());
 		await("shell prompt", () -> screen(opened.get(0)).contains("$"));
-		run(opened.get(0), "echo editor-in=$PWD", "editor-in=/usr/share");
+		run(opened.get(0), "echo editor-in=$PWD", "editor-in=" + shellPath(FOLDER));
 		menu.getShell().dispose();
 	}
 
@@ -256,7 +266,7 @@ class XtermViewTest {
 	void selectionWithoutResourceStartsInTheHomeDirectory() throws Exception {
 		workbench.selection = new StructuredSelection("not a resource");
 		XtermView view = open();
-		run(view, "echo in=$PWD", "in=" + System.getProperty("user.home"));
+		run(view, "echo in=$PWD", "in=" + shellPath(new File(System.getProperty("user.home")).getCanonicalFile()));
 	}
 
 	@Test
@@ -268,7 +278,7 @@ class XtermViewTest {
 
 	@Test
 	void shellThatFailsImmediatelyKeepsTheViewOpenWithItsError() throws Exception {
-		ShellProfiles.setDefaultCommandLine("/bin/sh -c \"echo broken; exit 3\"");
+		ShellProfiles.setDefaultCommandLine(bashScript("echo broken; exit 3"));
 		XtermView view = new XtermView();
 		workbench.open(view, null, null);
 		await("exit message", () -> screen(view).contains("Process exited with code 3"));
@@ -278,16 +288,18 @@ class XtermViewTest {
 		type(view, "ignored");
 
 		// Without a live shell the directory announced through OSC 7 is the one remembered.
-		view.browser.execute("javaDirectory('file:///usr/lib'); javaDirectory('/does/not/exist'); javaDirectory('')");
+		// evaluate, not execute: the Edge of Windows runs a script later.
+		view.browser.evaluate("javaDirectory('file://" + OTHER_FOLDER.toURI().getPath()
+				+ "'); javaDirectory('/does/not/exist'); javaDirectory('')");
 		XMLMemento memento = XMLMemento.createWriteRoot("view");
 		view.saveState(memento);
-		assertEquals("/usr/lib", memento.getString("directory"));
+		assertEquals(OTHER_FOLDER.getPath(), memento.getString("directory"));
 	}
 
 	@Test
 	void programThatFailsKeepsItsViewAndStartsAgainOnEnter() throws Exception {
 		// Like Claude Code ending with an error after a while: its message must stay readable.
-		ShellProfiles.setDefaultCommandLine("/bin/sh -c \"sleep 2.5; echo crashed-$$; exit 4\"");
+		ShellProfiles.setDefaultCommandLine(bashScript("sleep 2.5; echo crashed-$$; exit 4"));
 		XtermView view = new XtermView();
 		workbench.open(view, null, null);
 		await("exit message", () -> screen(view).contains("Process exited with code 4. Press Enter to restart it."));
@@ -298,8 +310,8 @@ class XtermViewTest {
 		pump(200);
 		assertFalse(screen(view).contains("[Restarted]"), "only Enter starts it again");
 		type(view, "\r");
-		await("started again", () -> screen(view).contains("[Restarted]"));
-		await("ended again", () -> screen(view).split("Process exited with code 4", -1).length == 3);
+		await("started again", () -> text(view).contains("[Restarted]"));
+		await("ended again", () -> text(view).split("Process exited with code 4", -1).length == 3);
 	}
 
 	@Test
@@ -326,11 +338,13 @@ class XtermViewTest {
 				return confirm[0];
 			}
 		});
-		run(view, "cd /usr/share && X=set && echo ready", "ready\n");
+		run(view, "cd '" + shellPath(FOLDER) + "' && X=set && echo ready", "ready\n");
+		// On Windows the command is over at the next prompt, a moment after its output.
+		await("back at the prompt", () -> !view.isDirty());
 		menuAction("Restart").run();
-		await("restarted", () -> screen(view).contains("[Restarted]"));
-		await("new prompt", () -> screen(view).substring(screen(view).indexOf("[Restarted]")).contains("$"));
-		run(view, "echo x=$X in $PWD", "x= in /usr/share");
+		await("restarted", () -> text(view).contains("[Restarted]"));
+		await("new prompt", () -> text(view).substring(text(view).indexOf("[Restarted]")).contains("$"));
+		run(view, "echo x=$X in $PWD", "x= in " + shellPath(FOLDER));
 		assertEquals(0, asked[0], "nothing ran: no question");
 
 		// A command runs: the user is asked first.
@@ -342,7 +356,7 @@ class XtermViewTest {
 		confirm[0] = true;
 		view.restart();
 		assertEquals(2, asked[0]);
-		await("restarted again", () -> screen(view).split("\\[Restarted\\]", -1).length == 3);
+		await("restarted again", () -> text(view).split("\\[Restarted\\]", -1).length == 3);
 		assertFalse(view.isDirty());
 	}
 
@@ -354,7 +368,7 @@ class XtermViewTest {
 		await("error message", () -> screen(view).contains("Could not start the shell"));
 		assertTrue(screen(view).contains("Press Enter to try again."));
 		type(view, "\r");
-		await("tried again", () -> screen(view).split("Could not start the shell", -1).length == 3);
+		await("tried again", () -> text(view).split("Could not start the shell", -1).length == 3);
 		assertEquals("xterm-shell", view.getPartName());
 	}
 
@@ -519,7 +533,9 @@ class XtermViewTest {
 	void tabShowsTheIconOfTheShellWithABadgeForItsActivity() throws Exception {
 		XtermView view = open();
 		Image idle = view.getTitleImage();
-		assertImage(XtermPlugin.image("icons/shells/bash.png"), idle, true);
+		// bash, or Git Bash on Windows.
+		String icon = ShellProfiles.iconOf(SHELL);
+		assertImage(XtermPlugin.image(icon), idle, true);
 		type(view, "sleep 2\r");
 		await("running badge", () -> view.getTitleImage() != idle);
 		Image running = view.getTitleImage();
@@ -531,7 +547,7 @@ class XtermViewTest {
 		// The model of the tab has the icon of the shell too: the one shown before the part is created,
 		// after a restart, and kept in the layout of the workbench.
 		MPart tab = workbench.parts.get(0);
-		await("icon in the model of the tab", () -> "platform:/plugin/org.eclipse.xterm4eclipse/icons/shells/bash.png".equals(tab.getIconURI()));
+		await("icon in the model of the tab", () -> ("platform:/plugin/org.eclipse.xterm4eclipse/" + icon).equals(tab.getIconURI()));
 		assertSame(view.getTitleImage(), tab.getTransientData().get(IPresentationEngine.OVERRIDE_ICON_IMAGE_KEY));
 
 		// Other programs show their own icon, for example Claude Code or PowerShell.
@@ -669,9 +685,10 @@ class XtermViewTest {
 		return String.valueOf(view.browser.evaluate("return xtermOptions()"));
 	}
 
+	/** A wheel turn, with Ctrl (Command on macOS) or not. */
 	private static void zoom(XtermView view, boolean ctrl, int deltaY) {
 		view.browser.execute("document.querySelector('.xterm-screen').dispatchEvent(new WheelEvent('wheel', "
-				+ "{deltaY: " + deltaY + ", ctrlKey: " + ctrl + ", bubbles: true, cancelable: true}))");
+				+ "{deltaY: " + deltaY + ", " + TestWorkbench.M1_KEY + ": " + ctrl + ", bubbles: true, cancelable: true}))");
 	}
 
 	@Test
@@ -707,7 +724,7 @@ class XtermViewTest {
 		Object previous = clipboard.getContents(TextTransfer.getInstance());
 		try {
 			XtermView view = open();
-			view.browser.execute("javaCopy(''); javaCopy('copied-by-test')");
+			view.browser.evaluate("javaCopy(''); javaCopy('copied-by-test')");
 			assertEquals("copied-by-test", clipboard.getContents(TextTransfer.getInstance()));
 			assertEquals("copied-by-test", view.browser.evaluate("return javaPaste()"));
 
@@ -822,8 +839,12 @@ class XtermViewTest {
 			XtermView view = open();
 			run(view, "clear; echo select-me", "select-me\n");
 			menuAction("Select All").run();
-			await("primary selection", () -> String.valueOf(clipboard.getContents(TextTransfer.getInstance(),
-					DND.SELECTION_CLIPBOARD)).contains("select-me"));
+			if (TestWorkbench.LINUX) {
+				await("primary selection", () -> String.valueOf(clipboard.getContents(TextTransfer.getInstance(),
+						DND.SELECTION_CLIPBOARD)).contains("select-me"));
+			} else {
+				pump(500);
+			}
 			assertEquals("untouched", clipboard.getContents(TextTransfer.getInstance()), "the clipboard only on request");
 
 			// Copy on select, when the user asked for it.
@@ -831,19 +852,25 @@ class XtermViewTest {
 			view.browser.execute("xtermSelectAll()");
 			await("clipboard", () -> String.valueOf(clipboard.getContents(TextTransfer.getInstance())).contains("select-me"));
 
+			if (!TestWorkbench.LINUX) {
+				// No primary selection on Windows and macOS: the middle button pastes nothing.
+				clipboard.setContents(new Object[] {"echo clipboard-$((1+1))"}, new Transfer[] {TextTransfer.getInstance()});
+				middleClick(view);
+				pump(500);
+				assertFalse(screen(view).contains("echo clipboard"));
+				return;
+			}
 			// The middle button pastes the primary selection.
 			clipboard.setContents(new Object[] {"echo primary-$((1+1))"}, new Transfer[] {TextTransfer.getInstance()},
 					DND.SELECTION_CLIPBOARD);
-			view.browser.execute("document.querySelector('#terminal').dispatchEvent(new MouseEvent('mouseup', "
-					+ "{bubbles: true, cancelable: true, button: 1}))");
+			middleClick(view);
 			await("pasted", () -> screen(view).contains("echo primary-$((1+1))"));
 			type(view, "\r");
 			await("run", () -> screen(view).contains("\nprimary-2\n"));
 
 			// Not when the program tracks the mouse: the click is for it.
 			run(view, "printf '\\033[?1000h'; echo tracking", "\ntracking\n");
-			view.browser.execute("document.querySelector('#terminal').dispatchEvent(new MouseEvent('mouseup', "
-					+ "{bubbles: true, cancelable: true, button: 1}))");
+			middleClick(view);
 			pump(500);
 			assertEquals(1, screen(view).split("echo primary", -1).length - 1);
 		} finally {
@@ -854,6 +881,11 @@ class XtermViewTest {
 			}
 			clipboard.dispose();
 		}
+	}
+
+	private static void middleClick(XtermView view) {
+		view.browser.execute("document.querySelector('#terminal').dispatchEvent(new MouseEvent('mouseup', "
+				+ "{bubbles: true, cancelable: true, button: 1}))");
 	}
 
 	@Test
@@ -906,11 +938,11 @@ class XtermViewTest {
 	@Test
 	void restartOfEclipseBringsBackScreenShellAndDirectory() throws Exception {
 		XtermView view = open();
-		run(view, "cd /usr/share && echo marker-$((6*7))", "marker-42");
+		run(view, "cd '" + shellPath(FOLDER) + "' && echo marker-$((6*7))", "marker-42");
 		XMLMemento memento = XMLMemento.createWriteRoot("view");
 		view.saveState(memento);
 		assertEquals(SHELL, memento.getString("shell"));
-		assertEquals("/usr/share", memento.getString("directory"));
+		assertEquals(FOLDER.getPath(), memento.getString("directory"));
 		Path saved = XtermPlugin.stateDirectory().resolve("main.screen");
 		assertTrue(Files.isRegularFile(saved));
 
@@ -925,10 +957,10 @@ class XtermViewTest {
 		ShellProfiles.setDefaultCommandLine("/bin/sh");
 		XtermView restored = new XtermView();
 		workbench.open(restored, null, memento);
-		await("restored screen", () -> screen(restored).contains("History restored"));
-		assertTrue(screen(restored).contains("marker-42"));
+		await("restored screen", () -> text(restored).contains("History restored"));
+		assertTrue(text(restored).contains("marker-42"));
 		assertEquals("bash", restored.getPartName());
-		run(restored, "echo back-in=$PWD", "back-in=/usr/share");
+		run(restored, "echo back-in=$PWD", "back-in=" + shellPath(FOLDER));
 
 		// Closed by the user: nothing to restore next time.
 		restored.dispose();
@@ -948,8 +980,8 @@ class XtermViewTest {
 		workbench.closing = true;
 		XtermView restored = new XtermView();
 		workbench.open(restored, null, memento);
-		await("restored", () -> screen(restored).contains("History restored"));
-		String screen = screen(restored);
+		await("restored", () -> text(restored).contains("History restored"));
+		String screen = text(restored);
 		assertTrue(screen.indexOf("footer-line") < screen.indexOf("History restored"), screen);
 		assertTrue(screen.contains("prompt-line\nfooter-line\n"), screen);
 
@@ -1091,7 +1123,7 @@ class XtermViewTest {
 			return null;
 		});
 		// A file is selected: the terminal opens in the folder that holds it.
-		IContainer folder = new Fake().on("getLocation", args -> org.eclipse.core.runtime.Path.fromOSString("/usr/lib"))
+		IContainer folder = new Fake().on("getLocation", args -> org.eclipse.core.runtime.Path.fromOSString(OTHER_FOLDER.getPath()))
 				.as(IContainer.class);
 		IFile file = new Fake().on("getParent", args -> folder).as(IFile.class);
 		ISelection[] selection = {new StructuredSelection(file)};
@@ -1108,17 +1140,17 @@ class XtermViewTest {
 		assertEquals(profiles.stream().map(ShellProfiles.Profile::name).toList(),
 				List.of(menu.getItems()).stream().map(MenuItem::getText).toList());
 
-		int bash = profiles.stream().map(ShellProfiles.Profile::name).toList().indexOf("bash");
-		assertSame(XtermPlugin.image("icons/shells/bash.png"), menu.getItem(bash).getImage(), "icon of the shell");
+		int bash = bashIndex(profiles);
+		assertSame(XtermPlugin.image(profiles.get(bash).icon()), menu.getItem(bash).getImage(), "icon of the shell");
 		menu.getItem(bash).notifyListeners(SWT.Selection, new Event());
 		assertEquals(1, opened.size());
 		assertEquals("bash", opened.get(0).getPartName());
 		await("shell prompt", () -> screen(opened.get(0)).contains("$"));
-		run(opened.get(0), "echo in=$PWD", "in=/usr/lib");
+		run(opened.get(0), "echo in=$PWD", "in=" + shellPath(OTHER_FOLDER));
 
 		// A folder is selected: the terminal opens in it.
 		selection[0] = new StructuredSelection(folder);
-		assertEquals(new File("/usr/lib"), XtermView.directoryOf(folder));
+		assertEquals(OTHER_FOLDER, XtermView.directoryOf(folder));
 		assertNull(XtermView.directoryOf("not a resource"));
 		assertNull(XtermView.directoryOf(new Fake().on("getParent", args -> new Fake().as(IContainer.class)).as(IFile.class)));
 
@@ -1130,13 +1162,13 @@ class XtermViewTest {
 		menu.getItem(bash).notifyListeners(SWT.Selection, new Event());
 		assertEquals(2, opened.size());
 		await("shell prompt", () -> screen(opened.get(1)).contains("$"));
-		run(opened.get(1), "echo second-in=$PWD", "second-in=/usr/lib");
+		run(opened.get(1), "echo second-in=$PWD", "second-in=" + shellPath(OTHER_FOLDER));
 
 		// A context menu tells which element it was opened on, whatever the active part selects.
 		IEvaluationContext state = new Fake()
 				.on("getVariable", args -> ISources.ACTIVE_MENU_SELECTION_NAME.equals(args[0])
 						? new StructuredSelection(new Fake().on("getLocation",
-								a -> org.eclipse.core.runtime.Path.fromOSString("/usr/share")).as(IContainer.class))
+								a -> org.eclipse.core.runtime.Path.fromOSString(FOLDER.getPath())).as(IContainer.class))
 						: null)
 				.as(IEvaluationContext.class);
 		IEvaluationService evaluation = new Fake().on("getCurrentState", args -> state).as(IEvaluationService.class);
@@ -1150,7 +1182,7 @@ class XtermViewTest {
 		menu.getItem(bash).notifyListeners(SWT.Selection, new Event());
 		assertEquals(3, opened.size());
 		await("shell prompt", () -> screen(opened.get(2)).contains("$"));
-		run(opened.get(2), "echo menu-in=$PWD", "menu-in=/usr/share");
+		run(opened.get(2), "echo menu-in=$PWD", "menu-in=" + shellPath(FOLDER));
 
 		// Nothing usable selected, or no page: no directory is forced, nothing breaks.
 		menu.dispose();
@@ -1192,13 +1224,13 @@ class XtermViewTest {
 		List<String> looked = new ArrayList<>();
 		workbench.bindings.on("getPerfectMatch", args -> {
 			looked.add(args[0].toString());
-			return args[0].toString().equals("CTRL+3") ? new KeyBinding((KeySequence) args[0], command,
+			return args[0].toString().equals(M1 + "+3") ? new KeyBinding((KeySequence) args[0], command,
 					"scheme", "context", null, null, null, Binding.SYSTEM) : null;
 		});
 		workbench.handlers.on("executeCommand", args -> executed.add(args[0]));
 		XtermView view = open();
 
-		// Ctrl+3 is bound: Eclipse runs Quick Access and the shell does not see the key.
+		// Ctrl+3 (Command+3 on macOS) is bound: Eclipse runs Quick Access and the shell does not see the key.
 		type(view, "echo [");
 		key(view, "Digit3", "3", true, false);
 		await("command run", () -> executed.size() == 1);
@@ -1208,28 +1240,29 @@ class XtermViewTest {
 		key(view, "KeyY", "Y", true, true);
 		type(view, "]\r");
 		await("line run", () -> screen(view).contains("\n[]\n"));
-		assertEquals(List.of("CTRL+3", "CTRL+SHIFT+R"), looked);
+		assertEquals(List.of(M1 + "+3", M1 + "+SHIFT+R"), looked);
 
 		// The list follows the preference.
-		XtermPlugin.preferences().setValue(XtermPlugin.PREF_ECLIPSE_SHORTCUTS, "CTRL+SHIFT+Y");
+		XtermPlugin.preferences().setValue(XtermPlugin.PREF_ECLIPSE_SHORTCUTS, M1 + "+SHIFT+Y");
 		await("new list", () -> {
 			key(view, "KeyY", "Y", true, true);
 			return looked.size() > 2;
 		});
-		assertEquals("CTRL+SHIFT+Y", looked.get(looked.size() - 1));
+		assertEquals(M1 + "+SHIFT+Y", looked.get(looked.size() - 1));
 		assertFalse(view.runEclipseShortcut("not a key+++"));
 		assertFalse(view.runEclipseShortcut(null));
 	}
 
-	private static void key(XtermView view, String code, String key, boolean ctrl, boolean shift) {
+	/** A key pressed with M1 (Ctrl, Command on macOS) or not. */
+	private static void key(XtermView view, String code, String key, boolean m1, boolean shift) {
 		view.browser.execute("document.querySelector('.xterm-helper-textarea').dispatchEvent(new KeyboardEvent('keydown', "
-				+ "{key: '" + key + "', code: '" + code + "', ctrlKey: " + ctrl + ", shiftKey: " + shift
+				+ "{key: '" + key + "', code: '" + code + "', " + TestWorkbench.M1_KEY + ": " + m1 + ", shiftKey: " + shift
 				+ ", bubbles: true, cancelable: true}))");
 	}
 
 	@Test
 	void eclipseShortcutsAreNamedLikeInThePage() {
-		assertEquals(List.of("CTRL+3", "CTRL+SHIFT+F7", "ALT+CTRL+SHIFT+X", "CTRL+PAGE_UP", "F11"),
+		assertEquals(List.of(M1 + "+3", M1 + "+SHIFT+F7", "ALT+" + M1 + "+SHIFT+X", "CTRL+PAGE_UP", "F11"),
 				EclipseShortcuts.parse("M1+3, , M1+M2+F7, M1+M2+M3+X, CTRL+PAGE_UP, F11, CTRL+X CTRL+S, bad+++, CTRL+"));
 		assertEquals("[\"CTRL+3\",\"a\\\"b\\\\\"]", EclipseShortcuts.toJson(List.of("CTRL+3", "a\"b\\")));
 		assertNull(EclipseShortcuts.sequence("bad+++"));
@@ -1309,24 +1342,51 @@ class XtermViewTest {
 				opened.add(file.getName() + "@" + line + ":" + column);
 			}
 		});
-		run(view, "cd " + directory + " && echo \"notes.txt:2:3: warning\"; echo \"missing.txt:1 notes.txt(3,1)\"",
+		run(view, "cd '" + shellPath(directory.toFile().getCanonicalFile()) + "' && echo \"notes.txt:2:3: warning\"; echo \"missing.txt:1 notes.txt(3,1)\"",
 				"notes.txt(3,1)");
 
 		// Only the files that exist, relative to the directory the shell is in, become links.
+		awaitLink(view, "notes.txt:2:3");
 		click(view, "notes.txt:2:3", true);
 		await("file opened", () -> opened.size() == 1);
 		assertEquals("notes.txt@2:3", opened.get(0));
 		click(view, "missing.txt", true);
 		click(view, "notes.txt:2:3", false);
+		awaitLink(view, "notes.txt(3,1)");
 		click(view, "notes.txt(3,1)", true);
 		await("second file opened", () -> opened.size() == 2);
 		assertEquals("notes.txt@3:1", opened.get(1));
 		deleteTree(directory);
 	}
 
+	/**
+	 * Moves the mouse over the text until it is shown as a link: finding the directory of the shell
+	 * takes a while on macOS.
+	 */
+	private static void awaitLink(XtermView view, String text) {
+		await("link on " + text, () -> {
+			view.browser.execute(position(text)
+					+ "screen.dispatchEvent(new MouseEvent('mousemove', {clientX: x, clientY: y, bubbles: true}));");
+			pump(100);
+			return Boolean.TRUE.equals(view.browser.evaluate("return document.querySelector('.xterm-cursor-pointer') !== null"));
+		});
+	}
+
 	/** Moves the mouse over the first occurrence of the text on the screen, then clicks it. */
 	private static void click(XtermView view, String text, boolean ctrl) {
-		String position = "var rows = document.querySelectorAll('.xterm-rows > div'); var target = null;"
+		String position = position(text);
+		view.browser.execute(position
+				+ "screen.dispatchEvent(new MouseEvent('mousemove', {clientX: x, clientY: y, bubbles: true}));");
+		pump(300);
+		view.browser.execute(position + "['mousedown', 'mouseup', 'click'].forEach(function (type) {"
+				+ "screen.dispatchEvent(new MouseEvent(type, {clientX: x, clientY: y, bubbles: true, button: 0, ctrlKey: "
+				+ ctrl + "})); });");
+		pump(300);
+	}
+
+	/** A script that sets x and y to the middle of the first character of the text on the screen. */
+	private static String position(String text) {
+		return "var rows = document.querySelectorAll('.xterm-rows > div'); var target = null;"
 				+ "for (var i = rows.length - 1; i >= 0 && !target; i--) {"
 				+ "  var walker = document.createTreeWalker(rows[i], NodeFilter.SHOW_TEXT); var node;"
 				+ "  while ((node = walker.nextNode()) && !target) {"
@@ -1336,13 +1396,6 @@ class XtermViewTest {
 				+ "      target = range.getBoundingClientRect(); } } }"
 				+ "var x = target.left + target.width / 2; var y = target.top + target.height / 2;"
 				+ "var screen = document.querySelector('.xterm-screen');";
-		view.browser.execute(position
-				+ "screen.dispatchEvent(new MouseEvent('mousemove', {clientX: x, clientY: y, bubbles: true}));");
-		pump(300);
-		view.browser.execute(position + "['mousedown', 'mouseup', 'click'].forEach(function (type) {"
-				+ "screen.dispatchEvent(new MouseEvent(type, {clientX: x, clientY: y, bubbles: true, button: 0, ctrlKey: "
-				+ ctrl + "})); });");
-		pump(300);
 	}
 
 	private static void deleteTree(Path directory) throws Exception {
@@ -1364,10 +1417,13 @@ class XtermViewTest {
 				candidates(view, "Program.cs(12,5): error CS1002"));
 		assertEquals("[]", candidates(view, "see https://example.org/a.js, version 1.2.3 or Makefile"));
 
-		File directory = new File("/usr");
-		assertEquals(new File("/usr/bin/env").getCanonicalFile(), XtermView.resolveFile("/usr/bin/env", null));
-		assertEquals(new File("/usr/bin/env").getCanonicalFile(), XtermView.resolveFile("bin/env", directory));
-		assertEquals(new File("/usr/bin/env").getCanonicalFile(), XtermView.resolveFile("../usr/bin/env", directory));
+		File directory = Files.createTempDirectory("xterm-files").toFile().getCanonicalFile();
+		File env = new File(directory, "bin/env");
+		Files.createDirectories(env.getParentFile().toPath());
+		Files.writeString(env.toPath(), "");
+		assertEquals(env, XtermView.resolveFile(env.getPath(), null));
+		assertEquals(env, XtermView.resolveFile("bin/env", directory));
+		assertEquals(env, XtermView.resolveFile("../" + directory.getName() + "/bin/env", directory));
 		assertNull(XtermView.resolveFile("bin", directory), "a directory is not a file");
 		assertNull(XtermView.resolveFile("bin/env", null));
 		assertNull(XtermView.resolveFile("no/such/file.txt", directory));
@@ -1376,6 +1432,7 @@ class XtermViewTest {
 		assertNull(XtermView.resolveFile("~/no/such/file.txt", directory));
 		assertEquals("[null]", String.valueOf(view.browser.evaluate("return JSON.stringify(javaResolveFiles(['nothing.txt']))")));
 		assertEquals("[]", String.valueOf(view.browser.evaluate("return JSON.stringify(javaResolveFiles([]))")));
+		deleteTree(directory.toPath());
 	}
 
 	private static String candidates(XtermView view, String line) {
@@ -1389,17 +1446,28 @@ class XtermViewTest {
 		shiftEnter(view);
 		await("command run by Shift+Enter", () -> screen(view).contains("shift-6\n"));
 
-		// A program in the foreground receives ESC CR, as Claude Code expects for a new line.
-		type(view, "cat -v\r");
-		await("program running", view::isDirty);
-		shiftEnter(view);
-		type(view, "\r");
-		await("Alt+Enter received", () -> screen(view).contains("^["));
-		type(view, "\u0003");
+		// A program in the foreground receives ESC CR, as Claude Code expects for a new line. On Windows
+		// the pseudo console turns it into Alt+Enter for the native programs, such as Claude Code on
+		// Node, which read it back as ESC CR: the programs of Git Bash do not.
+		if (TestWorkbench.WINDOWS) {
+			type(view, "node -e 'process.stdin.setRawMode(true); process.stdin.once(\"data\", function (d) {"
+					+ " console.log(\"got\" + JSON.stringify(String(d))); process.exit(); })'\r");
+			await("program running", view::isDirty);
+			pump(1000);
+			shiftEnter(view);
+			await("Alt+Enter received", () -> screen(view).contains("got\"\\u001b\\r\""));
+		} else {
+			type(view, "cat -v\r");
+			await("program running", view::isDirty);
+			shiftEnter(view);
+			type(view, "\r");
+			await("Alt+Enter received", () -> screen(view).contains("^["));
+			type(view, "\u0003");
+		}
 
 		// A view running a program of its own always sends it ESC CR.
 		XtermView program = new XtermView();
-		ShellProfiles.setDefaultCommandLine("/bin/bash --norc --noprofile -c \"cat -v\"");
+		ShellProfiles.setDefaultCommandLine(SHELL + " -c \"cat -v\"");
 		workbench.open(program, "program", null);
 		assertEquals("\u001b\r", program.shiftEnterSequence());
 		assertEquals("\r", view.shiftEnterSequence());
@@ -1557,6 +1625,32 @@ class XtermViewTest {
 	}
 
 	@Test
+	void pathsAndTitlesOfTheShellsOfWindowsAreUnderstood() {
+		// Directories announced by the bash of Git for Windows, MSYS2 or Cygwin.
+		String gitBash = "\"C:\\Program Files\\Git\\usr\\bin\\bash.exe\" --login -i";
+		assertEquals("C:\\Users\\me", XtermView.windowsPath("/c/Users/me", gitBash));
+		assertEquals("D:\\a b", XtermView.windowsPath("/cygdrive/d/a b", null));
+		assertEquals("C:\\", XtermView.windowsPath("/c", gitBash));
+		assertEquals("C:\\Users", XtermView.windowsPath("\\c\\Users", null), "as a File of Windows gives it");
+		assertEquals("C:\\Program Files\\Git\\usr\\share", XtermView.windowsPath("/usr/share", gitBash));
+		assertEquals("C:\\Git\\etc", XtermView.windowsPath("/etc", "C:/Git/bin/bash.exe"));
+		assertEquals("/usr/share", XtermView.windowsPath("/usr/share", "cmd.exe"), "not a bash of Windows");
+		assertEquals("C:\\Users\\me", XtermView.windowsPath("C:\\Users\\me", gitBash));
+		assertEquals("\\\\server\\share", XtermView.windowsPath("\\\\server\\share", gitBash));
+
+		// The pseudo console of Windows names the window after the program: not a title.
+		assertTrue(XtermView.isProgramPath("C:\\Program Files\\Git\\usr\\bin\\bash.exe", gitBash));
+		assertTrue(XtermView.isProgramPath("C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+				"powershell.exe -NoLogo"));
+		assertTrue(XtermView.isProgramPath("C:\\Windows\\system32\\cmd.exe ", "cmd.exe /c claude.cmd"));
+		assertFalse(XtermView.isProgramPath("bash.exe", "bash.exe"), "not a path");
+		assertFalse(XtermView.isProgramPath("MINGW64:/c/Users/me", gitBash));
+		assertFalse(XtermView.isProgramPath("/usr/bin/vim", "/bin/bash"));
+		assertFalse(XtermView.isProgramPath("C:\\x\\bash.exe - vim", gitBash));
+		assertFalse(XtermView.isProgramPath("/bin/bash", ""));
+	}
+
+	@Test
 	void droppedPathsAreQuotedForTheShell() {
 		assertEquals("/usr/share '/tmp/a b' ", XtermView.quotePaths(List.of("/usr/share", "/tmp/a b"), "/bin/bash"));
 		assertEquals("'it'\\''s' ", XtermView.quotePaths(List.of("it's"), "zsh -l"));
@@ -1633,10 +1727,20 @@ class XtermViewTest {
 			}
 			return null;
 		});
-		XtermView.open(workbench.page.as(IWorkbenchPage.class), SHELL, new File("/usr/lib"));
+		XtermView.open(workbench.page.as(IWorkbenchPage.class), SHELL, OTHER_FOLDER);
 		XtermView view = opened.get(0);
 		assertEquals("bash", view.getPartName());
 		await("shell prompt", () -> screen(view).contains("$"));
-		run(view, "echo chosen=$PWD", "chosen=/usr/lib");
+		run(view, "echo chosen=$PWD", "chosen=" + shellPath(OTHER_FOLDER));
+	}
+
+	/** The first bash of the shell menu: bash on Linux and macOS, Git Bash on Windows. */
+	private static int bashIndex(List<ShellProfiles.Profile> profiles) {
+		for (int i = 0; i < profiles.size(); i++) {
+			if (profiles.get(i).name().toLowerCase().contains("bash")) {
+				return i;
+			}
+		}
+		throw new AssertionError("no bash in " + profiles);
 	}
 }

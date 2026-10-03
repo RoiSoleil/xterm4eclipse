@@ -112,17 +112,21 @@ node xterm/update.mjs --latest   # moves to the latest stable versions (out for 
 Every Monday, GitHub Actions (`xterm-update.yml`) opens a pull request when new versions are out and
 runs the build and the tests on it; it is merged by hand once they pass.
 
-The tests drive the real view, browser and shell, so they open windows on the current display and
-only run on Linux and macOS. GitHub Actions runs them on a virtual display and sends the coverage
-to Codecov.
+The tests drive the real view, browser and shell, so they open windows on the current display. They
+run on Linux, macOS and Windows (in Git Bash), with the bash of the PATH, which must be 4.4 or
+later: on macOS, the one of Homebrew (`brew install bash`). GitHub Actions runs them on the three
+systems and sends the coverage of Linux to Codecov.
 
 # Platform notes
 
-- Linux is the platform the plug-in is developed and tested on. The Windows and macOS code paths
-  are covered by unit tests where they are plain logic (shell detection, environment, shortcuts
-  configuration) but have not been run on those systems.
+- The tests run on Linux, macOS and Windows at each change, with the real browser of each system
+  (WebKitGTK, WebKit, Edge) and its pseudo terminals (ConPTY on Windows).
 - The directory of the shell is read from the system on Linux and macOS. On Windows it is known
-  only if the shell announces it (OSC 9;9 or OSC 7): this is set up automatically for `cmd.exe`.
+  only if the shell announces it (OSC 9;9 or OSC 7): this is set up automatically for `cmd.exe` and
+  for the bash of Git for Windows, MSYS2 and Cygwin (through `PROMPT_COMMAND`, which a `.bashrc` that
+  replaces it turns off).
+- On Windows the pseudo console clears the screen when a shell starts: the restored history and the
+  end of a restarted shell are in the scrollback, above it.
 
 # License
 
