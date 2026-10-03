@@ -1,5 +1,9 @@
 package org.eclipse.xterm4eclipse;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BooleanSupplier;
@@ -39,6 +43,10 @@ final class TestWorkbench {
 
 	static final boolean MAC = System.getProperty("os.name").startsWith("Mac");
 	static final boolean LINUX = System.getProperty("os.name").startsWith("Linux");
+	static final boolean WINDOWS = System.getProperty("os.name").startsWith("Windows");
+	/** Two folders that exist on every system, canonical: as the shell sees them. */
+	static final File FOLDER = folder("xterm-folder");
+	static final File OTHER_FOLDER = folder("xterm-other-folder");
 	/** The modifier of the Eclipse shortcuts (M1): Command on macOS, Ctrl elsewhere. */
 	static final String M1 = MAC ? "COMMAND" : "CTRL";
 	/** The event property of that modifier in the page. */
@@ -49,6 +57,30 @@ final class TestWorkbench {
 	 */
 	static final String BASH = System.getProperty("xterm4eclipse.test.bash", "/bin/bash");
 	static final String SHELL = '"' + BASH + "\" --norc --noprofile";
+
+	private static File folder(String prefix) {
+		try {
+			File folder = Files.createTempDirectory(prefix).toFile().getCanonicalFile();
+			folder.deleteOnExit();
+			return folder;
+		} catch (IOException e) {
+			throw new UncheckedIOException(e);
+		}
+	}
+
+	/** The path of the file as the bash of the tests prints it: /c/Users/me for C:\Users\me in Git Bash. */
+	static String shellPath(File file) {
+		String path = file.getPath();
+		if (WINDOWS && path.matches("[A-Za-z]:\\\\.*")) {
+			return "/" + Character.toLowerCase(path.charAt(0)) + path.substring(2).replace('\\', '/');
+		}
+		return path;
+	}
+
+	/** A command line that runs the script with the bash of the tests. */
+	static String bashScript(String script) {
+		return '"' + BASH + "\" -c \"" + script + '"';
+	}
 
 	final Fake page = new Fake();
 	/** The page of every view, the same object each time as in Eclipse. */

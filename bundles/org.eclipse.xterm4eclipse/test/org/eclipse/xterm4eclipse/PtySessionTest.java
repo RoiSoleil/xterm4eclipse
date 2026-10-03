@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -40,8 +39,13 @@ class PtySessionTest implements PtySession.Listener {
 	}
 
 	private PtySession start(String... command) throws Exception {
-		session = new PtySession(command, new File("/tmp"), 100, 30, this);
+		session = new PtySession(command, TestWorkbench.FOLDER, 100, 30, this);
 		return session;
+	}
+
+	/** The bash of the tests, without the settings of the user. */
+	private PtySession startShell() throws Exception {
+		return start(TestWorkbench.BASH, "--norc", "--noprofile");
 	}
 
 	private void send(String text) {
@@ -75,7 +79,7 @@ class PtySessionTest implements PtySession.Listener {
 
 	@Test
 	void shellRunsInATerminalOfTheRequestedSize() throws Exception {
-		start("/bin/sh");
+		startShell();
 		send("stty size; echo term=$TERM color=$COLORTERM é\n");
 		await("command output", () -> output().contains("term=xterm-256color color=truecolor é"));
 		assertTrue(output().contains("30 100"), output());
@@ -88,7 +92,7 @@ class PtySessionTest implements PtySession.Listener {
 
 	@Test
 	void busyWhileACommandRunsInTheForeground() throws Exception {
-		start("/bin/bash", "--norc");
+		startShell();
 		await("prompt", () -> output().contains("$"));
 		assertFalse(session.isBusy());
 		send("sleep 1\n");
@@ -98,15 +102,20 @@ class PtySessionTest implements PtySession.Listener {
 
 	@Test
 	void currentDirectoryFollowsTheShell() throws Exception {
-		start("/bin/sh");
-		assertEquals(new File("/tmp").getCanonicalFile(), session.currentDirectory().getCanonicalFile());
-		send("cd /usr\n");
-		await("cd", () -> new File("/usr").equals(session.currentDirectory()));
+		startShell();
+		if (TestWorkbench.WINDOWS) {
+			// Windows does not tell: the view follows what the shell announces.
+			assertNull(session.currentDirectory());
+			return;
+		}
+		assertEquals(TestWorkbench.FOLDER, session.currentDirectory().getCanonicalFile());
+		send("cd '" + TestWorkbench.OTHER_FOLDER + "'\n");
+		await("cd", () -> TestWorkbench.OTHER_FOLDER.equals(session.currentDirectory()));
 	}
 
 	@Test
 	void exitIsReportedWithItsCodeAfterTheOutput() throws Exception {
-		start("/bin/sh");
+		startShell();
 		send("echo bye; exit 7\n");
 		await("exit", () -> exitCode.get() != null);
 		assertEquals(7, exitCode.get());
@@ -121,7 +130,7 @@ class PtySessionTest implements PtySession.Listener {
 	@Test
 	void exitIsReportedEvenIfABackgroundJobKeepsTheTerminalOpen() throws Exception {
 		// The same situation as on Windows, where the stream of the terminal outlives the shell.
-		start("/bin/sh");
+		startShell();
 		send("sleep 20 &\n");
 		send("exit 4\n");
 		await("exit", () -> exitCode.get() != null);
@@ -130,7 +139,7 @@ class PtySessionTest implements PtySession.Listener {
 
 	@Test
 	void disposeKillsTheShellWithoutReportingAnExit() throws Exception {
-		start("/bin/sh");
+		startShell();
 		await("alive", session::isAlive);
 		session.dispose();
 		assertFalse(session.isAlive());
