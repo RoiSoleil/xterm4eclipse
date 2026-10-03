@@ -14,18 +14,20 @@ MAVEN=https://repo1.maven.org/maven2
 # Class path separator and JVM options of the system. The tests run the bash of the PATH, which
 # must be 4.4 or later (bracketed paste): on macOS, the one of Homebrew.
 SEP=:
-JAVA_OPTS=()
+# The system as the Eclipse launcher gives it (Platform.getOS()): CDT picks its pseudo terminals with it.
+JAVA_OPTS=(-Dosgi.os=linux)
 TEST_BASH=$(command -v bash)
 case "$(uname -s)" in
 MINGW* | MSYS* | CYGWIN*)
 	SEP=';'
+	JAVA_OPTS=(-Dosgi.os=win32)
 	# Java does not understand the /c/... paths of Git Bash.
 	ECLIPSE_HOME=$(cygpath -m "$ECLIPSE_HOME")
 	TEST_BASH=$(cygpath -w "$TEST_BASH")
 	;;
 Darwin)
 	# SWT runs on the main thread of macOS.
-	JAVA_OPTS=(-XstartOnFirstThread)
+	JAVA_OPTS=(-Dosgi.os=macosx -XstartOnFirstThread)
 	;;
 esac
 
@@ -79,7 +81,7 @@ javac --release 21 -nowarn -encoding UTF-8 -d build/test-classes @build/test.arg
 # The bundle folder gives the web/ and icons/ resources, as in the plug-in jar.
 STATUS=0
 # ${@+"$@"}: no arguments is not an error for the bash 3 of macOS.
-java ${JAVA_OPTS[@]+"${JAVA_OPTS[@]}"} -Dfile.encoding=UTF-8 \
+java "${JAVA_OPTS[@]}" -Dfile.encoding=UTF-8 \
 	-javaagent:".cache/org.jacoco.agent-$JACOCO-runtime.jar=destfile=build/jacoco.exec,includes=org.eclipse.xterm4eclipse.*" \
 	-Djava.library.path=build/natives -Dxterm4eclipse.state=build/state "-Dxterm4eclipse.test.bash=$TEST_BASH" \
 	@build/run.args \
