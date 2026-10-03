@@ -164,6 +164,8 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	/** The page of the terminal, the only one the browser may show. */
 	private File pageFile;
 	private long sessionStart;
+	/** The shell or program has ended and the view stays open: Enter starts it again. */
+	private volatile boolean ended;
 	/** Screen content saved before the last Eclipse shutdown, replayed once when the view opens. */
 	private byte[] restoredContent;
 	private File workingDirectory;
@@ -648,6 +650,16 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			}
 		};
 		getViewSite().getActionBars().getMenuManager().add(rename);
+
+		Action restartAction = new Action("Restart") { //$NON-NLS-1$
+			@Override
+			public void run() {
+				restart();
+				setFocus();
+			}
+		};
+		restartAction.setToolTipText("Start the shell again, in the directory it is in"); //$NON-NLS-1$
+		getViewSite().getActionBars().getMenuManager().add(restartAction);
 
 		moveAction = new Action() {
 			@Override
@@ -1344,9 +1356,10 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			session = new PtySession(ShellProfiles.parse(commandLine), workingDirectory, cols, rows, this);
 		} catch (IOException | RuntimeException | LinkageError e) {
 			session = null;
+			ended = true;
 			XtermPlugin.log("Could not start the shell", e); //$NON-NLS-1$
-			append(null, ("\r\n\u001b[31mCould not start the shell: " + e + "\u001b[0m\r\n") //$NON-NLS-1$ //$NON-NLS-2$
-					.getBytes(StandardCharsets.UTF_8));
+			append(null, ("\r\n\u001b[31mCould not start the shell: " + e //$NON-NLS-1$
+					+ "\u001b[0m\r\n\u001b[2m[Press Enter to try again.]\u001b[0m\r\n").getBytes(StandardCharsets.UTF_8)); //$NON-NLS-1$
 		}
 	}
 
@@ -1364,6 +1377,9 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		}
 		byte[] bytes = data.getBytes(binary ? StandardCharsets.ISO_8859_1 : StandardCharsets.UTF_8);
 		if (session == null || !session.isAlive()) {
+			if (ended && data.indexOf('\r') >= 0) {
+				restart();
+			}
 			return;
 		}
 		session.write(bytes);
@@ -1398,12 +1414,10 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 
 	@Override
 	public void exited(PtySession source, int exitCode) {
-		// A shell that dies right away with an error could not start properly: keep the view open so
-		// that its output can be read. Otherwise the user left the shell, close the view like VS Code.
-		boolean failedToStart = exitCode != 0 && System.currentTimeMillis() - sessionStart < FAILED_START_MILLIS;
-		if (failedToStart) {
-			append(null, ("\r\n\u001b[2m[Process exited with code " + exitCode + "]\u001b[0m\r\n") //$NON-NLS-1$ //$NON-NLS-2$
-					.getBytes(StandardCharsets.UTF_8));
+		if (keepsViewOpen(exitCode, System.currentTimeMillis() - sessionStart, commandLine)) {
+			ended = true;
+			append(null, ("\r\n\u001b[2m[Process exited with code " + exitCode //$NON-NLS-1$
+					+ ". Press Enter to restart it.]\u001b[0m\r\n").getBytes(StandardCharsets.UTF_8)); //$NON-NLS-1$
 		} else if (!display.isDisposed()) {
 			display.asyncExec(() -> {
 				if (!browser.isDisposed() && source == session && !workbench().isClosing()) {
@@ -1411,6 +1425,52 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 				}
 			});
 		}
+	}
+
+	/**
+	 * Whether the view stays open when its shell or program ends, so that its last output can be read
+	 * and it can be started again: when it fails at once (it could not start properly), or when a
+	 * program of its own (Claude Code...) fails. A shell that the user leaves, even with the error code
+	 * of its last command ({@code false; exit}), closes the view like in VS Code.
+	 */
+	static boolean keepsViewOpen(int exitCode, long millisRunning, String commandLine) {
+		return exitCode != 0 && (millisRunning < FAILED_START_MILLIS || !ShellProfiles.isShell(commandLine));
+	}
+
+	/**
+	 * Starts the shell or program of the view again, in the directory it was in, after asking if a
+	 * command still runs.
+	 */
+	void restart() {
+		if (browser == null || browser.isDisposed()) {
+			return;
+		}
+		PtySession current = session;
+		if (current != null && current.isAlive() && current.isBusy() && !confirmRestart()) {
+			return;
+		}
+		File directory = currentDirectory();
+		if (directory != null && directory.isDirectory()) {
+			workingDirectory = directory;
+		}
+		append(null, "\r\n\u001b[2m[Restarted]\u001b[0m\r\n".getBytes(StandardCharsets.UTF_8)); //$NON-NLS-1$
+		ended = false;
+		lastBusy = false;
+		sessionStart = System.currentTimeMillis();
+		if (current != null) {
+			current.dispose();
+		}
+		session = null;
+		startNewSession();
+		firePropertyChange(IWorkbenchPartConstants.PROP_DIRTY);
+		setActivity(Activity.IDLE);
+	}
+
+	/** Asks the user whether to restart the terminal and terminate the command that runs in it. */
+	boolean confirmRestart() {
+		return MessageDialog.openQuestion(getSite().getShell(), "Restart Terminal", //$NON-NLS-1$
+				"A command is still running in '" + getPartName() //$NON-NLS-1$
+						+ "'. Restarting the terminal will terminate it.\n\nRestart anyway?"); //$NON-NLS-1$
 	}
 
 	/**

@@ -31,7 +31,9 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
   WSL, Claude Code), with a badge for a running command (orange dot) and for a finished command or a
   program asking for attention through the bell or an OSC 9 / OSC 777 notification (green dot).
 - After a restart of Eclipse each terminal reopens with the same shell, directory and screen content.
-- `exit` closes the view.
+- `exit` closes the view. A program run on its own (Claude Code...) that fails, or a shell that cannot
+  start, keeps its view open with its last output: Enter starts it again. *Restart* in the view menu
+  starts a fresh shell in the directory of the current one.
 - Shift+Enter inserts a newline in Claude Code (and runs the command at a shell prompt). Copy/paste:
   Ctrl+Shift+C / Ctrl+Shift+V, Shift+Insert, right click; Cmd+C / Cmd+V on macOS; Ctrl+C (with a
   selection) / Ctrl+V on Windows.
