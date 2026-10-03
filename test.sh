@@ -40,10 +40,14 @@ rm -rf build && mkdir -p build/classes build/test-classes build/natives
 # JNA, which the PTY of CDT uses on Windows, is a bundle folder.
 ECLIPSE_CP=$( (find "$ECLIPSE_HOME/plugins" -maxdepth 1 -name '*.jar'; find "$ECLIPSE_HOME/plugins" -maxdepth 1 -type d -name 'com.sun.jna*') |
 	grep -v -E 'junit|opentest4j|apiguardian|\.source_' | tr '\n' "$SEP")
-# The PTY of CDT is native code, normally loaded by OSGi from a platform fragment.
+# The PTY of CDT is native code, normally loaded by OSGi from a platform fragment: the libraries
+# of the processor only (a fragment of macOS has those of several).
+ARCH=$(uname -m)
+[ "$ARCH" = arm64 ] && ARCH=aarch64
 for fragment in "$ECLIPSE_HOME"/plugins/org.eclipse.cdt.core.{linux,macosx,win32}*.jar; do
-	[ -f "$fragment" ] && unzip -q -o -j "$fragment" 'os/*' -d build/natives 2>/dev/null || true
+	[ -f "$fragment" ] && unzip -q -o -j "$fragment" "os/*/$ARCH/*" -d build/natives 2>/dev/null || true
 done
+ls build/natives
 
 # In argument files: the class path is longer than a command line of Windows.
 classpath() {
