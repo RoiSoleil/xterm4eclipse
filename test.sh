@@ -45,9 +45,18 @@ for fragment in "$ECLIPSE_HOME"/plugins/org.eclipse.cdt.core.{linux,macosx,win32
 	[ -f "$fragment" ] && unzip -q -o -j "$fragment" 'os/*' -d build/natives 2>/dev/null || true
 done
 
-javac --release 21 -nowarn -encoding UTF-8 -g -cp "$ECLIPSE_CP" -d build/classes $(find $BUNDLE/src -name '*.java')
-javac --release 21 -nowarn -encoding UTF-8 -cp "build/classes$SEP$CONSOLE$SEP$ECLIPSE_CP" -d build/test-classes \
-	$(find $BUNDLE/test -name '*.java')
+# In argument files: the class path is longer than a command line of Windows.
+classpath() {
+	echo "-cp \"$1\""
+}
+classpath "$ECLIPSE_CP" > build/main.args
+find $BUNDLE/src -name '*.java' >> build/main.args
+classpath "build/classes$SEP$CONSOLE$SEP$ECLIPSE_CP" > build/test.args
+find $BUNDLE/test -name '*.java' >> build/test.args
+classpath "build/classes${SEP}build/test-classes$SEP$BUNDLE$SEP$CONSOLE$SEP$ECLIPSE_CP" > build/run.args
+
+javac --release 21 -nowarn -encoding UTF-8 -g -d build/classes @build/main.args
+javac --release 21 -nowarn -encoding UTF-8 -d build/test-classes @build/test.args
 
 # The bundle folder gives the web/ and icons/ resources, as in the plug-in jar.
 STATUS=0
@@ -55,7 +64,7 @@ STATUS=0
 java ${JAVA_OPTS[@]+"${JAVA_OPTS[@]}"} -Dfile.encoding=UTF-8 \
 	-javaagent:".cache/org.jacoco.agent-$JACOCO-runtime.jar=destfile=build/jacoco.exec,includes=org.eclipse.xterm4eclipse.*" \
 	-Djava.library.path=build/natives -Dxterm4eclipse.state=build/state \
-	-cp "build/classes${SEP}build/test-classes$SEP$BUNDLE$SEP$CONSOLE$SEP$ECLIPSE_CP" \
+	@build/run.args \
 	org.junit.platform.console.ConsoleLauncher execute --scan-classpath build/test-classes \
 	--details=tree --disable-banner ${@+"$@"} || STATUS=$?
 
