@@ -286,7 +286,7 @@ final class PtySession {
 		}
 	}
 
-	private static String[] environment(String[] command) {
+	static String[] environment(String[] command) {
 		return environment(command, System.getProperty("os.name", ""), System.getenv(), //$NON-NLS-1$ //$NON-NLS-2$
 				XtermPlugin.preference(XtermPlugin.PREF_ENVIRONMENT));
 	}

@@ -412,6 +412,121 @@ class XtermViewTest {
 	}
 
 	@Test
+	void claudeCodeIsOfferedTheMcpServerOfEclipse() throws Exception {
+		Path previousHome = ClaudeSessions.home;
+		Path base = Files.createTempDirectory(FOLDER.toPath(), "mcp");
+		ClaudeSessions.home = base.resolve("home").resolve(".claude");
+		EclipseMcp.workspace = base.resolve("workspace");
+		XtermView.mcpPostponed = false;
+		try (java.net.ServerSocket server = EclipseMcpTest.server()) {
+			String url = "http://127.0.0.1:" + server.getLocalPort() + "/mcp";
+			String token = "0f0f2a2e-1f9c-4c4a-9a0e-6d0f8f0f1e2b";
+			Path endpoint = EclipseMcp.workspace.resolve(EclipseMcp.ENDPOINT_FILE);
+			Files.createDirectories(endpoint.getParent());
+			Files.writeString(endpoint, "{\"state\": \"listening\", \"url\": \"" + url + "\", \"token\": \"" + token + "\"}");
+
+			// A Claude Code that logs its commands of mcp; the first add finds an older server.
+			Path log = base.resolve("mcp.log");
+			Path older = base.resolve("older");
+			Path program;
+			String commandLine;
+			if (TestWorkbench.WINDOWS) {
+				program = Files.writeString(base.resolve("claude.cmd"), "@echo off\r\nif \"%1\"==\"mcp\" goto mcp\r\n"
+						+ "echo args: %*\r\nping -n 30 127.0.0.1 > nul\r\nexit /b 0\r\n:mcp\r\necho %*>> \"" + log + "\"\r\n"
+						+ "if \"%2\"==\"add\" if not exist \"" + older + "\" (type nul > \"" + older
+						+ "\" & echo MCP server eclipse already exists in user config & exit /b 1)\r\nexit /b 0\r\n");
+				commandLine = "cmd.exe /c " + program;
+			} else {
+				program = Files.writeString(base.resolve("claude"), "#!/bin/sh\nif [ \"$1\" = mcp ]; then\n"
+						+ "  echo \"$*\" >> '" + log + "'\n"
+						+ "  if [ \"$2\" = add ] && [ ! -e '" + older + "' ]; then touch '" + older + "';"
+						+ " echo 'MCP server eclipse already exists in user config'; exit 1; fi\n  exit 0\nfi\n"
+						+ "echo \"args: $*\"\nsleep 30\n");
+				assertTrue(program.toFile().setExecutable(true));
+				commandLine = '"' + program.toString() + '"';
+			}
+			List<String> asked = new ArrayList<>();
+			int[] answer = {XtermView.MCP_ADD};
+			List<XtermView> opened = new ArrayList<>();
+			workbench.page.on("showView", args -> {
+				try {
+					XtermView view = new XtermView() {
+						@Override
+						int askAddEclipseMcp(String address) {
+							asked.add(address);
+							return answer[0];
+						}
+					};
+					workbench.open(view, (String) args[1], null);
+					opened.add(view);
+				} catch (Exception e) {
+					throw new AssertionError(e);
+				}
+				return null;
+			});
+			IWorkbenchPage page = workbench.page.as(IWorkbenchPage.class);
+
+			// Added, an older server of the same name replaced, then Claude Code starts.
+			XtermView.open(page, commandLine, FOLDER);
+			await("added and started", () -> screen(opened.get(0)).contains("args: --session-id"));
+			assertEquals(List.of(url), asked);
+			assertTrue(screen(opened.get(0)).contains("[Claude Code can now use Eclipse.]"));
+			String add = "mcp add --transport http --scope user eclipse " + url + " --header";
+			List<String> calls = Files.readAllLines(log).stream().map(String::strip).toList();
+			assertEquals(3, calls.size(), calls.toString());
+			assertTrue(calls.get(0).startsWith(add) && calls.get(0).contains("Bearer " + token), calls.get(0));
+			assertEquals("mcp remove --scope user eclipse", calls.get(1));
+			assertTrue(calls.get(2).startsWith(add), calls.get(2));
+
+			// Known by Claude Code: not asked again.
+			Path config = Files.createDirectories(ClaudeSessions.home.getParent()).resolve(".claude.json");
+			Files.writeString(config, "{\"mcpServers\": {\"eclipse\": {\"url\": \"" + url + "\"}}}");
+			XtermView.open(page, commandLine, FOLDER);
+			await("started", () -> screen(opened.get(1)).contains("args: --session-id"));
+			assertEquals(1, asked.size());
+
+			// Not now: Claude Code starts without it, and is not asked again until Eclipse restarts.
+			Files.delete(config);
+			answer[0] = XtermView.MCP_NOT_NOW;
+			XtermView.open(page, commandLine, FOLDER);
+			await("started without", () -> screen(opened.get(2)).contains("args: --session-id"));
+			XtermView.open(page, commandLine, FOLDER);
+			await("started again", () -> screen(opened.get(3)).contains("args: --session-id"));
+			assertEquals(2, asked.size());
+
+			// Never: a preference, which the preference page shows.
+			XtermView.mcpPostponed = false;
+			answer[0] = XtermView.MCP_NEVER;
+			XtermView.open(page, commandLine, FOLDER);
+			await("started without, for good", () -> screen(opened.get(4)).contains("args: --session-id"));
+			assertFalse(XtermPlugin.isEnabled(XtermPlugin.PREF_OFFER_ECLIPSE_MCP));
+			XtermView.open(page, commandLine, FOLDER);
+			await("started", () -> screen(opened.get(5)).contains("args: --session-id"));
+			assertEquals(3, asked.size());
+			assertEquals(3, Files.readAllLines(log).size(), "nothing added without a yes");
+
+			// A terminal that Eclipse restores never asks.
+			XtermPlugin.preferences().setToDefault(XtermPlugin.PREF_OFFER_ECLIPSE_MCP);
+			XMLMemento memento = XMLMemento.createWriteRoot("view");
+			memento.putString("shell", commandLine);
+			XtermView restored = new XtermView() {
+				@Override
+				int askAddEclipseMcp(String address) {
+					asked.add(address);
+					return XtermView.MCP_ADD;
+				}
+			};
+			workbench.open(restored, "restored", memento);
+			await("restored", () -> screen(restored).contains("args: --session-id"));
+			assertEquals(3, asked.size());
+		} finally {
+			ClaudeSessions.home = previousHome;
+			EclipseMcp.workspace = null;
+			XtermView.mcpPostponed = false;
+		}
+	}
+
+	@Test
 	void unknownShellIsReportedInTheTerminal() throws Exception {
 		ShellProfiles.setDefaultCommandLine("/nonexistent/xterm-shell");
 		XtermView view = new XtermView();
