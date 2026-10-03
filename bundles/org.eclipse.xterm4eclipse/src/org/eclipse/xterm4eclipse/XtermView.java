@@ -179,6 +179,10 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	/** Screen content saved before the last Eclipse shutdown, replayed once when the view opens. */
 	private byte[] restoredContent;
 	private File workingDirectory;
+	/** Opened by the user, not restored by Eclipse: a new Claude Code may offer the MCP server of Eclipse. */
+	private boolean openedByUser;
+	/** The user answered "Not Now": not asked again until Eclipse restarts. */
+	static boolean mcpPostponed;
 	/** The conversation of Claude Code in this terminal, if it runs Claude Code. */
 	private String claudeSession;
 	/** The next start of Claude Code resumes its conversation. */
@@ -231,6 +235,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		boolean requested = nextCommandLine != null;
 		pendingInput = nextInput;
 		nextInput = null;
+		openedByUser = requested;
 		if (requested) {
 			commandLine = nextCommandLine;
 			nextCommandLine = null;
@@ -384,7 +389,8 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		function("javaStart", args -> { //$NON-NLS-1$
 			updateSize(args);
 			startSession();
-			if (pendingInput != null) {
+			// Else it waits for the shell, which a question of the user delays.
+			if (pendingInput != null && session != null) {
 				String text = pendingInput;
 				pendingInput = null;
 				// Not from within the call: it runs a script in the page.
@@ -1551,6 +1557,154 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	}
 
 	private void startNewSession() {
+		boolean offer = openedByUser;
+		openedByUser = false;
+		if (offer && ClaudeSessions.runsClaude(commandLine) && offerEclipseMcp()) {
+			return;
+		}
+		startProcess();
+	}
+
+	/** Answers of {@link #askAddEclipseMcp}. */
+	static final int MCP_ADD = 0;
+	static final int MCP_NOT_NOW = 1;
+	static final int MCP_NEVER = 2;
+
+	/**
+	 * When the MCP server of Eclipse runs and Claude Code does not know it yet, asks the user whether
+	 * to add it, before Claude Code starts so that it uses it at once.
+	 *
+	 * @return {@code true} if Claude Code starts later, once the user has answered
+	 */
+	private boolean offerEclipseMcp() {
+		if (mcpPostponed || !XtermPlugin.isEnabled(XtermPlugin.PREF_OFFER_ECLIPSE_MCP)) {
+			return false;
+		}
+		EclipseMcp.Endpoint endpoint = EclipseMcp.running();
+		if (endpoint == null || EclipseMcp.configured(endpoint, workingDirectory)) {
+			return false;
+		}
+		String[] claude = ShellProfiles.parse(commandLine);
+		String[] add = EclipseMcp.mcpCommand(claude, EclipseMcp.addArguments(endpoint));
+		String[] remove = EclipseMcp.mcpCommand(claude, "remove", "--scope", "user", EclipseMcp.NAME); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		if (add == null || remove == null) {
+			return false;
+		}
+		// A dialog runs the event loop: not from within the call of the page.
+		display.asyncExec(() -> {
+			if (browser.isDisposed()) {
+				return;
+			}
+			int answer = askAddEclipseMcp(endpoint.url());
+			if (answer == MCP_ADD) {
+				addEclipseMcp(add, remove);
+				return;
+			}
+			if (answer == MCP_NEVER) {
+				XtermPlugin.preferences().setValue(XtermPlugin.PREF_OFFER_ECLIPSE_MCP, false);
+			} else {
+				mcpPostponed = true;
+			}
+			startProcessAndSendPendingInput();
+		});
+		return true;
+	}
+
+	/** @return {@link #MCP_ADD}, {@link #MCP_NOT_NOW} or {@link #MCP_NEVER} */
+	int askAddEclipseMcp(String url) {
+		MessageDialog dialog = new MessageDialog(getSite().getShell(), "Eclipse MCP Server", null, //$NON-NLS-1$
+				"The MCP server of Eclipse is running (" + url + ").\n\nAdd it to Claude Code, so that Claude can use " //$NON-NLS-1$ //$NON-NLS-2$
+						+ "this Eclipse: its projects, problems, launches...?\n\nClaude Code keeps it for your user (claude mcp add " //$NON-NLS-1$
+						+ "--scope user " + EclipseMcp.NAME + "), with the token of the server.", //$NON-NLS-1$ //$NON-NLS-2$
+				MessageDialog.QUESTION, new String[] {"&Add", "&Not Now", "Ne&ver Ask"}, 0); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		int answer = dialog.open();
+		return answer == MCP_ADD || answer == MCP_NEVER ? answer : MCP_NOT_NOW;
+	}
+
+	/** Adds the server with {@code claude mcp}, then starts Claude Code. */
+	private void addEclipseMcp(String[] add, String[] remove) {
+		append(null, "\u001b[2m[Adding the MCP server of Eclipse to Claude Code...]\u001b[0m\r\n".getBytes(StandardCharsets.UTF_8)); //$NON-NLS-1$
+		File directory = workingDirectory;
+		String[] environment = PtySession.environment(add);
+		Thread worker = new Thread(() -> {
+			String failure = runClaude(add, directory, environment);
+			if (failure != null && failure.contains("already exists")) { //$NON-NLS-1$
+				// A server of this name from an earlier run, on another port: replaced.
+				runClaude(remove, directory, environment);
+				failure = runClaude(add, directory, environment);
+			}
+			String message = failure == null ? "\u001b[2m[Claude Code can now use Eclipse.]\u001b[0m\r\n" //$NON-NLS-1$
+					: "\u001b[31m[Could not add the MCP server of Eclipse: " + oneLine(failure).strip() + "]\u001b[0m\r\n"; //$NON-NLS-1$ //$NON-NLS-2$
+			if (failure != null) {
+				XtermPlugin.log("Could not add the MCP server of Eclipse to Claude Code: " + failure, null); //$NON-NLS-1$
+			}
+			display.asyncExec(() -> {
+				if (!browser.isDisposed()) {
+					append(null, message.getBytes(StandardCharsets.UTF_8));
+					keepAboveTheNewShell();
+					startProcessAndSendPendingInput();
+				}
+			});
+		}, "Xterm MCP of Claude Code"); //$NON-NLS-1$
+		worker.setDaemon(true);
+		worker.start();
+	}
+
+	/**
+	 * Runs a command of Claude Code to its end, at most a minute.
+	 *
+	 * @return {@code null} if it succeeded, else what it printed
+	 */
+	static String runClaude(String[] command, File directory, String[] environment) {
+		try {
+			ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
+			if (directory != null && directory.isDirectory()) {
+				builder.directory(directory);
+			}
+			builder.environment().clear();
+			for (String variable : environment) {
+				int equals = variable.indexOf('=', 1);
+				if (equals > 0) {
+					builder.environment().put(variable.substring(0, equals), variable.substring(equals + 1));
+				}
+			}
+			Process process = builder.start();
+			process.getOutputStream().close();
+			java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+			Thread reader = new Thread(() -> {
+				try {
+					process.getInputStream().transferTo(output);
+				} catch (IOException e) {
+					// The process is gone.
+				}
+			});
+			reader.setDaemon(true);
+			reader.start();
+			if (!process.waitFor(60, TimeUnit.SECONDS)) {
+				process.destroyForcibly();
+				return "no answer after a minute"; //$NON-NLS-1$
+			}
+			reader.join(1000);
+			String printed = output.toString(StandardCharsets.UTF_8);
+			return process.exitValue() == 0 ? null : printed.isBlank() ? "exit code " + process.exitValue() : printed; //$NON-NLS-1$
+		} catch (IOException e) {
+			return String.valueOf(e.getMessage());
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			return "interrupted"; //$NON-NLS-1$
+		}
+	}
+
+	private void startProcessAndSendPendingInput() {
+		startProcess();
+		if (pendingInput != null && session != null) {
+			String text = pendingInput;
+			pendingInput = null;
+			send(text);
+		}
+	}
+
+	private void startProcess() {
 		String[] arguments = ShellProfiles.parse(commandLine);
 		if (ClaudeSessions.runsClaude(commandLine)) {
 			if (claudeSession == null) {

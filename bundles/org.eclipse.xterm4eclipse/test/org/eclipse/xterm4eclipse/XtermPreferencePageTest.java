@@ -32,7 +32,7 @@ class XtermPreferencePageTest {
 		for (String key : new String[] {XtermPlugin.PREF_DEFAULT_SHELL, XtermPlugin.PREF_FOCUS_ON_FINISH,
 				XtermPlugin.PREF_RESTORE_HISTORY, XtermPlugin.PREF_ECLIPSE_SHORTCUTS, XtermPlugin.PREF_WARN_MULTI_LINE_PASTE, XtermPlugin.PREF_COPY_ON_SELECT, XtermPlugin.PREF_FONT_FAMILY,
 				XtermPlugin.PREF_FONT_SIZE, XtermPlugin.PREF_SCROLLBACK, XtermPlugin.PREF_CURSOR_STYLE, XtermPlugin.PREF_CURSOR_BLINK,
-				XtermPlugin.PREF_MAC_OPTION_IS_META, XtermPlugin.PREF_ENVIRONMENT}) {
+				XtermPlugin.PREF_MAC_OPTION_IS_META, XtermPlugin.PREF_ENVIRONMENT, XtermPlugin.PREF_OFFER_ECLIPSE_MCP}) {
 			XtermPlugin.preferences().setToDefault(key);
 		}
 	}
@@ -53,15 +53,16 @@ class XtermPreferencePageTest {
 		List<Text> texts = new ArrayList<>();
 		List<Combo> combos = new ArrayList<>();
 		collect(page.getControl(), checkboxes, texts, combos);
-		assertEquals(6, checkboxes.size());
+		assertEquals(7, checkboxes.size());
 		assertEquals(6, texts.size());
 		assertEquals(1, combos.size());
 		assertFalse(checkboxes.get(0).getSelection(), "focus on finish is off by default");
 		assertTrue(checkboxes.get(1).getSelection(), "history is restored by default");
 		assertTrue(checkboxes.get(2).getSelection(), "multi-line paste confirmed by default");
 		assertFalse(checkboxes.get(3).getSelection(), "no copy on select by default");
-		assertTrue(checkboxes.get(4).getSelection(), "blinking cursor by default");
-		assertFalse(checkboxes.get(5).getSelection(), "Option types accents by default");
+		assertTrue(checkboxes.get(4).getSelection(), "the MCP server of Eclipse is offered by default");
+		assertTrue(checkboxes.get(5).getSelection(), "blinking cursor by default");
+		assertFalse(checkboxes.get(6).getSelection(), "Option types accents by default");
 		assertEquals("", texts.get(1).getText(), "text font of Eclipse by default");
 		assertEquals("0", texts.get(2).getText());
 		assertEquals("10000", texts.get(3).getText());
@@ -85,7 +86,8 @@ class XtermPreferencePageTest {
 		toggle(checkboxes.get(2), false);
 		toggle(checkboxes.get(3), true);
 		toggle(checkboxes.get(4), false);
-		toggle(checkboxes.get(5), true);
+		toggle(checkboxes.get(5), false);
+		toggle(checkboxes.get(6), true);
 		assertTrue(page.performOk());
 
 		assertEquals("/usr/bin/fish", ShellProfiles.defaultCommandLine());
@@ -93,6 +95,7 @@ class XtermPreferencePageTest {
 		assertFalse(XtermPlugin.isEnabled(XtermPlugin.PREF_RESTORE_HISTORY));
 		assertFalse(XtermPlugin.isEnabled(XtermPlugin.PREF_WARN_MULTI_LINE_PASTE));
 		assertTrue(XtermPlugin.isEnabled(XtermPlugin.PREF_COPY_ON_SELECT));
+		assertFalse(XtermPlugin.isEnabled(XtermPlugin.PREF_OFFER_ECLIPSE_MCP));
 		assertEquals("M1+3", XtermPlugin.preference(XtermPlugin.PREF_ECLIPSE_SHORTCUTS));
 		assertEquals("Fira Code", XtermPlugin.preference(XtermPlugin.PREF_FONT_FAMILY));
 		assertEquals(14, XtermPlugin.preferences().getInt(XtermPlugin.PREF_FONT_SIZE));

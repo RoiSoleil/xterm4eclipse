@@ -38,6 +38,9 @@ public class XtermPreferencePage extends FieldEditorPreferencePage implements IW
 				getFieldEditorParent()));
 		addField(new BooleanFieldEditor(XtermPlugin.PREF_COPY_ON_SELECT,
 				"Co&py the selection to the clipboard as soon as it is made", getFieldEditorParent())); //$NON-NLS-1$
+		addField(new BooleanFieldEditor(XtermPlugin.PREF_OFFER_ECLIPSE_MCP,
+				"Offer to add the &MCP server of Eclipse to new terminals of Claude Code, when it runs", //$NON-NLS-1$
+				getFieldEditorParent()));
 		addField(new StringFieldEditor(XtermPlugin.PREF_FONT_FAMILY,
 				"Fo&nt (empty: text font of Eclipse):", getFieldEditorParent())); //$NON-NLS-1$
 		IntegerFieldEditor fontSize = new IntegerFieldEditor(XtermPlugin.PREF_FONT_SIZE,

@@ -52,6 +52,8 @@ final class XtermPlugin {
 	static final String PREF_MAC_OPTION_IS_META = "macOptionIsMeta"; //$NON-NLS-1$
 	/** Environment variables of the shells, see {@link ShellEnvironment}. */
 	static final String PREF_ENVIRONMENT = "environment"; //$NON-NLS-1$
+	/** New terminals of Claude Code offer to add the MCP server of Eclipse when it runs. */
+	static final String PREF_OFFER_ECLIPSE_MCP = "offerEclipseMcp"; //$NON-NLS-1$
 
 	private static final Bundle BUNDLE = FrameworkUtil.getBundle(XtermPlugin.class);
 	private static IPreferenceStore preferences;
@@ -90,6 +92,7 @@ final class XtermPlugin {
 			preferences.setDefault(PREF_CURSOR_BLINK, true);
 			preferences.setDefault(PREF_MAC_OPTION_IS_META, false);
 			preferences.setDefault(PREF_ENVIRONMENT, ""); //$NON-NLS-1$
+			preferences.setDefault(PREF_OFFER_ECLIPSE_MCP, true);
 		}
 		return preferences;
 	}
