@@ -89,8 +89,15 @@ class PtySessionTest implements PtySession.Listener {
 
 		session.resize(120, 40);
 		session.resize(0, 0);
-		send("stty size\n");
-		await("new size", () -> output().contains("40 120"));
+		// The pseudo console of Windows resizes later: asked again until it has.
+		for (int attempt = 0; attempt < 10 && !output().contains("40 120"); attempt++) {
+			send("stty size\n");
+			long deadline = System.currentTimeMillis() + 1000;
+			while (!output().contains("40 120") && System.currentTimeMillis() < deadline) {
+				Thread.sleep(20);
+			}
+		}
+		assertTrue(output().contains("40 120"), output());
 	}
 
 	@Test
