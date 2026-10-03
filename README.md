@@ -100,6 +100,18 @@ export ECLIPSE_HOME=/path/to/eclipse   # macOS: /Applications/Eclipse.app/Conten
 ./test.sh              # tests with coverage (fails under 85 % of lines)
 ```
 
+xterm.js and its addons are copied to `bundles/org.eclipse.xterm4eclipse/web` from the npm packages
+of the versions in `xterm/package-lock.json`, checked against their integrity hashes (the build fails
+if the files differ):
+
+```bash
+node xterm/update.mjs            # copies the locked versions
+node xterm/update.mjs --latest   # moves to the latest stable versions (out for at least 7 days)
+```
+
+Every Monday, GitHub Actions (`xterm-update.yml`) opens a pull request when new versions are out and
+runs the build and the tests on it; it is merged by hand once they pass.
+
 The tests drive the real view, browser and shell, so they open windows on the current display and
 only run on Linux and macOS. GitHub Actions runs them on a virtual display and sends the coverage
 to Codecov.
