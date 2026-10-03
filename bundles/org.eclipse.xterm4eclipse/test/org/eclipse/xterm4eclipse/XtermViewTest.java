@@ -1331,20 +1331,47 @@ class XtermViewTest {
 				"notes.txt(3,1)");
 
 		// Only the files that exist, relative to the directory the shell is in, become links.
+		awaitLink(view, "notes.txt:2:3");
 		click(view, "notes.txt:2:3", true);
 		await("file opened", () -> opened.size() == 1);
 		assertEquals("notes.txt@2:3", opened.get(0));
 		click(view, "missing.txt", true);
 		click(view, "notes.txt:2:3", false);
+		awaitLink(view, "notes.txt(3,1)");
 		click(view, "notes.txt(3,1)", true);
 		await("second file opened", () -> opened.size() == 2);
 		assertEquals("notes.txt@3:1", opened.get(1));
 		deleteTree(directory);
 	}
 
+	/**
+	 * Moves the mouse over the text until it is shown as a link: finding the directory of the shell
+	 * takes a while on macOS.
+	 */
+	private static void awaitLink(XtermView view, String text) {
+		await("link on " + text, () -> {
+			view.browser.execute(position(text)
+					+ "screen.dispatchEvent(new MouseEvent('mousemove', {clientX: x, clientY: y, bubbles: true}));");
+			pump(100);
+			return Boolean.TRUE.equals(view.browser.evaluate("return document.querySelector('.xterm-cursor-pointer') !== null"));
+		});
+	}
+
 	/** Moves the mouse over the first occurrence of the text on the screen, then clicks it. */
 	private static void click(XtermView view, String text, boolean ctrl) {
-		String position = "var rows = document.querySelectorAll('.xterm-rows > div'); var target = null;"
+		String position = position(text);
+		view.browser.execute(position
+				+ "screen.dispatchEvent(new MouseEvent('mousemove', {clientX: x, clientY: y, bubbles: true}));");
+		pump(300);
+		view.browser.execute(position + "['mousedown', 'mouseup', 'click'].forEach(function (type) {"
+				+ "screen.dispatchEvent(new MouseEvent(type, {clientX: x, clientY: y, bubbles: true, button: 0, ctrlKey: "
+				+ ctrl + "})); });");
+		pump(300);
+	}
+
+	/** A script that sets x and y to the middle of the first character of the text on the screen. */
+	private static String position(String text) {
+		return "var rows = document.querySelectorAll('.xterm-rows > div'); var target = null;"
 				+ "for (var i = rows.length - 1; i >= 0 && !target; i--) {"
 				+ "  var walker = document.createTreeWalker(rows[i], NodeFilter.SHOW_TEXT); var node;"
 				+ "  while ((node = walker.nextNode()) && !target) {"
@@ -1354,13 +1381,6 @@ class XtermViewTest {
 				+ "      target = range.getBoundingClientRect(); } } }"
 				+ "var x = target.left + target.width / 2; var y = target.top + target.height / 2;"
 				+ "var screen = document.querySelector('.xterm-screen');";
-		view.browser.execute(position
-				+ "screen.dispatchEvent(new MouseEvent('mousemove', {clientX: x, clientY: y, bubbles: true}));");
-		pump(300);
-		view.browser.execute(position + "['mousedown', 'mouseup', 'click'].forEach(function (type) {"
-				+ "screen.dispatchEvent(new MouseEvent(type, {clientX: x, clientY: y, bubbles: true, button: 0, ctrlKey: "
-				+ ctrl + "})); });");
-		pump(300);
 	}
 
 	private static void deleteTree(Path directory) throws Exception {

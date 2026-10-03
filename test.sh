@@ -47,12 +47,20 @@ ECLIPSE_CP=$( (find "$ECLIPSE_HOME/plugins" -maxdepth 1 -name '*.jar'; find "$EC
 # of the processor only (a fragment of macOS has those of several).
 ARCH=$(uname -m)
 [ "$ARCH" = arm64 ] && ARCH=aarch64
-# With the jar tool of the JDK: Git Bash has no unzip.
+# A fragment is a jar, or a folder when Eclipse unpacks it (Windows); jars are extracted with the jar
+# tool of the JDK, as Git Bash has no unzip.
 mkdir -p build/fragments
-for fragment in "$ECLIPSE_HOME"/plugins/org.eclipse.cdt.core.{linux,macosx,win32}*.jar; do
-	[ -f "$fragment" ] && (cd build/fragments && jar xf "$fragment" os)
+for fragment in "$ECLIPSE_HOME"/plugins/org.eclipse.cdt.core.{linux,macosx,win32}*; do
+	if [ -d "$fragment/os" ]; then
+		cp -R "$fragment/os" build/fragments/
+	elif [ -f "$fragment" ] && [ "${fragment%.jar}" != "$fragment" ]; then
+		(cd build/fragments && jar xf "$fragment" os)
+	fi
 done
-cp build/fragments/os/*/"$ARCH"/* build/natives/
+cp build/fragments/os/*/"$ARCH"/* build/natives/ || {
+	echo "No PTY library for $ARCH in:" "$ECLIPSE_HOME"/plugins/org.eclipse.cdt.core*
+	exit 1
+}
 ls build/natives
 
 # In argument files: the class path is longer than a command line of Windows.
