@@ -1,5 +1,6 @@
 package org.eclipse.xterm4eclipse;
 
+import static org.eclipse.xterm4eclipse.TestWorkbench.M1;
 import static org.eclipse.xterm4eclipse.TestWorkbench.await;
 import static org.eclipse.xterm4eclipse.TestWorkbench.pump;
 import static org.eclipse.xterm4eclipse.TestWorkbench.screen;
@@ -82,7 +83,7 @@ import org.junit.jupiter.api.Test;
 /** Drives the real view: SWT browser, xterm.js and a shell in a PTY; only the workbench is faked. */
 class XtermViewTest {
 
-	private static final String SHELL = "/bin/bash --norc --noprofile";
+	private static final String SHELL = TestWorkbench.SHELL;
 
 	private TestWorkbench workbench;
 	private final List<Image> titleImages = new ArrayList<>();
@@ -160,8 +161,8 @@ class XtermViewTest {
 		try {
 			XtermView view = new XtermView();
 			workbench.open(view, null, null);
-			pump(50);
-			assertTrue(view.browser.getVisible());
+			// The deadline reveals it, whether the page has said it is ready or not.
+			await("revealed by the deadline", () -> view.browser.getVisible(), 1000);
 			await("shell prompt", () -> screen(view).contains("$"));
 		} finally {
 			XtermView.revealTimeoutMillis = 1500;
@@ -669,9 +670,10 @@ class XtermViewTest {
 		return String.valueOf(view.browser.evaluate("return xtermOptions()"));
 	}
 
+	/** A wheel turn, with Ctrl (Command on macOS) or not. */
 	private static void zoom(XtermView view, boolean ctrl, int deltaY) {
 		view.browser.execute("document.querySelector('.xterm-screen').dispatchEvent(new WheelEvent('wheel', "
-				+ "{deltaY: " + deltaY + ", ctrlKey: " + ctrl + ", bubbles: true, cancelable: true}))");
+				+ "{deltaY: " + deltaY + ", " + TestWorkbench.M1_KEY + ": " + ctrl + ", bubbles: true, cancelable: true}))");
 	}
 
 	@Test
@@ -822,8 +824,12 @@ class XtermViewTest {
 			XtermView view = open();
 			run(view, "clear; echo select-me", "select-me\n");
 			menuAction("Select All").run();
-			await("primary selection", () -> String.valueOf(clipboard.getContents(TextTransfer.getInstance(),
-					DND.SELECTION_CLIPBOARD)).contains("select-me"));
+			if (TestWorkbench.LINUX) {
+				await("primary selection", () -> String.valueOf(clipboard.getContents(TextTransfer.getInstance(),
+						DND.SELECTION_CLIPBOARD)).contains("select-me"));
+			} else {
+				pump(500);
+			}
 			assertEquals("untouched", clipboard.getContents(TextTransfer.getInstance()), "the clipboard only on request");
 
 			// Copy on select, when the user asked for it.
@@ -831,19 +837,25 @@ class XtermViewTest {
 			view.browser.execute("xtermSelectAll()");
 			await("clipboard", () -> String.valueOf(clipboard.getContents(TextTransfer.getInstance())).contains("select-me"));
 
+			if (!TestWorkbench.LINUX) {
+				// No primary selection on Windows and macOS: the middle button pastes nothing.
+				clipboard.setContents(new Object[] {"echo clipboard-$((1+1))"}, new Transfer[] {TextTransfer.getInstance()});
+				middleClick(view);
+				pump(500);
+				assertFalse(screen(view).contains("echo clipboard"));
+				return;
+			}
 			// The middle button pastes the primary selection.
 			clipboard.setContents(new Object[] {"echo primary-$((1+1))"}, new Transfer[] {TextTransfer.getInstance()},
 					DND.SELECTION_CLIPBOARD);
-			view.browser.execute("document.querySelector('#terminal').dispatchEvent(new MouseEvent('mouseup', "
-					+ "{bubbles: true, cancelable: true, button: 1}))");
+			middleClick(view);
 			await("pasted", () -> screen(view).contains("echo primary-$((1+1))"));
 			type(view, "\r");
 			await("run", () -> screen(view).contains("\nprimary-2\n"));
 
 			// Not when the program tracks the mouse: the click is for it.
 			run(view, "printf '\\033[?1000h'; echo tracking", "\ntracking\n");
-			view.browser.execute("document.querySelector('#terminal').dispatchEvent(new MouseEvent('mouseup', "
-					+ "{bubbles: true, cancelable: true, button: 1}))");
+			middleClick(view);
 			pump(500);
 			assertEquals(1, screen(view).split("echo primary", -1).length - 1);
 		} finally {
@@ -854,6 +866,11 @@ class XtermViewTest {
 			}
 			clipboard.dispose();
 		}
+	}
+
+	private static void middleClick(XtermView view) {
+		view.browser.execute("document.querySelector('#terminal').dispatchEvent(new MouseEvent('mouseup', "
+				+ "{bubbles: true, cancelable: true, button: 1}))");
 	}
 
 	@Test
@@ -1192,13 +1209,13 @@ class XtermViewTest {
 		List<String> looked = new ArrayList<>();
 		workbench.bindings.on("getPerfectMatch", args -> {
 			looked.add(args[0].toString());
-			return args[0].toString().equals("CTRL+3") ? new KeyBinding((KeySequence) args[0], command,
+			return args[0].toString().equals(M1 + "+3") ? new KeyBinding((KeySequence) args[0], command,
 					"scheme", "context", null, null, null, Binding.SYSTEM) : null;
 		});
 		workbench.handlers.on("executeCommand", args -> executed.add(args[0]));
 		XtermView view = open();
 
-		// Ctrl+3 is bound: Eclipse runs Quick Access and the shell does not see the key.
+		// Ctrl+3 (Command+3 on macOS) is bound: Eclipse runs Quick Access and the shell does not see the key.
 		type(view, "echo [");
 		key(view, "Digit3", "3", true, false);
 		await("command run", () -> executed.size() == 1);
@@ -1208,28 +1225,29 @@ class XtermViewTest {
 		key(view, "KeyY", "Y", true, true);
 		type(view, "]\r");
 		await("line run", () -> screen(view).contains("\n[]\n"));
-		assertEquals(List.of("CTRL+3", "CTRL+SHIFT+R"), looked);
+		assertEquals(List.of(M1 + "+3", M1 + "+SHIFT+R"), looked);
 
 		// The list follows the preference.
-		XtermPlugin.preferences().setValue(XtermPlugin.PREF_ECLIPSE_SHORTCUTS, "CTRL+SHIFT+Y");
+		XtermPlugin.preferences().setValue(XtermPlugin.PREF_ECLIPSE_SHORTCUTS, M1 + "+SHIFT+Y");
 		await("new list", () -> {
 			key(view, "KeyY", "Y", true, true);
 			return looked.size() > 2;
 		});
-		assertEquals("CTRL+SHIFT+Y", looked.get(looked.size() - 1));
+		assertEquals(M1 + "+SHIFT+Y", looked.get(looked.size() - 1));
 		assertFalse(view.runEclipseShortcut("not a key+++"));
 		assertFalse(view.runEclipseShortcut(null));
 	}
 
-	private static void key(XtermView view, String code, String key, boolean ctrl, boolean shift) {
+	/** A key pressed with M1 (Ctrl, Command on macOS) or not. */
+	private static void key(XtermView view, String code, String key, boolean m1, boolean shift) {
 		view.browser.execute("document.querySelector('.xterm-helper-textarea').dispatchEvent(new KeyboardEvent('keydown', "
-				+ "{key: '" + key + "', code: '" + code + "', ctrlKey: " + ctrl + ", shiftKey: " + shift
+				+ "{key: '" + key + "', code: '" + code + "', " + TestWorkbench.M1_KEY + ": " + m1 + ", shiftKey: " + shift
 				+ ", bubbles: true, cancelable: true}))");
 	}
 
 	@Test
 	void eclipseShortcutsAreNamedLikeInThePage() {
-		assertEquals(List.of("CTRL+3", "CTRL+SHIFT+F7", "ALT+CTRL+SHIFT+X", "CTRL+PAGE_UP", "F11"),
+		assertEquals(List.of(M1 + "+3", M1 + "+SHIFT+F7", "ALT+" + M1 + "+SHIFT+X", "CTRL+PAGE_UP", "F11"),
 				EclipseShortcuts.parse("M1+3, , M1+M2+F7, M1+M2+M3+X, CTRL+PAGE_UP, F11, CTRL+X CTRL+S, bad+++, CTRL+"));
 		assertEquals("[\"CTRL+3\",\"a\\\"b\\\\\"]", EclipseShortcuts.toJson(List.of("CTRL+3", "a\"b\\")));
 		assertNull(EclipseShortcuts.sequence("bad+++"));

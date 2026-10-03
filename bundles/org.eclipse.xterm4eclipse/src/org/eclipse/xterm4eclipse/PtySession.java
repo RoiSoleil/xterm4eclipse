@@ -13,9 +13,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.eclipse.cdt.utils.pty.PTY;
 import org.eclipse.cdt.utils.spawner.ProcessFactory;
+
+import com.sun.jna.Library;
+import com.sun.jna.Native;
 
 /**
  * A shell process attached to a pseudo terminal.
@@ -32,6 +36,11 @@ final class PtySession {
 
 	private final PTY pty;
 	private final Process process;
+	/**
+	 * The terminal side of the pseudo terminal, held open on macOS until the shell has opened it:
+	 * macOS clears the size of a terminal that nobody has open, when it is opened.
+	 */
+	private final AtomicInteger heldTerminal = new AtomicInteger(-1);
 	private final OutputStream stdin;
 	private final ExecutorService writer = Executors.newSingleThreadExecutor(r -> daemon(r, "Xterm PTY writer")); //$NON-NLS-1$
 	private volatile boolean alive = true;
@@ -42,8 +51,14 @@ final class PtySession {
 
 	PtySession(String[] command, File workingDirectory, int cols, int rows, Listener listener) throws IOException {
 		pty = new PTY(PTY.Mode.TERMINAL);
+		heldTerminal.set(MacTerminal.hold(pty.getSlaveName()));
 		pty.setTerminalSize(cols, rows);
-		process = ProcessFactory.getFactory().exec(command, environment(command), workingDirectory, pty);
+		try {
+			process = ProcessFactory.getFactory().exec(command, environment(command), workingDirectory, pty);
+		} catch (IOException | RuntimeException e) {
+			releaseTerminal();
+			throw e;
+		}
 		// The size set before exec is not always honoured, set it again once the child exists.
 		pty.setTerminalSize(cols, rows);
 		stdin = pty.getOutputStream();
@@ -134,6 +149,7 @@ final class PtySession {
 
 	void dispose() {
 		alive = false;
+		releaseTerminal();
 		writer.shutdownNow();
 		// Spawner.destroy() waits for the process to die: never do that on the UI thread.
 		daemon(process::destroy, "Xterm PTY terminator").start(); //$NON-NLS-1$
@@ -145,6 +161,8 @@ final class PtySession {
 			int n;
 			while ((n = in.read(buffer)) != -1) {
 				if (n > 0) {
+					// The shell writes to its terminal: it has it open.
+					releaseTerminal();
 					listener.output(this, buffer, n);
 				}
 			}
@@ -162,6 +180,8 @@ final class PtySession {
 		int exitCode = -1;
 		try {
 			exitCode = process.waitFor();
+			// Else the end of the output never comes.
+			releaseTerminal();
 			// Let the last output through before the exit is reported.
 			reader.join(DRAIN_MILLIS);
 		} catch (InterruptedException e) {
@@ -179,6 +199,56 @@ final class PtySession {
 		}
 		if (wasAlive) {
 			listener.exited(this, exitCode);
+		}
+	}
+
+	private void releaseTerminal() {
+		MacTerminal.release(heldTerminal.getAndSet(-1));
+	}
+
+	/**
+	 * Opens the terminal side of pseudo terminals on macOS, through the C library and JNA, which CDT
+	 * brings for the pseudo consoles of Windows. Without JNA the size of a new shell may stay 0 x 0
+	 * until the view is resized.
+	 */
+	static final class MacTerminal {
+
+		private static final boolean MAC = System.getProperty("os.name", "").startsWith("Mac"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		/** O_RDONLY | O_NOCTTY of macOS: the terminal does not become the one of Eclipse. */
+		private static final int READ_ONLY_NOT_CONTROLLING = 0x20000;
+
+		private MacTerminal() {
+		}
+
+		/** @return the file descriptor of the opened terminal, or -1 */
+		static int hold(String name) {
+			if (!MAC || name == null) {
+				return -1;
+			}
+			try {
+				return Libc.INSTANCE.open(name, READ_ONLY_NOT_CONTROLLING);
+			} catch (LinkageError | RuntimeException e) {
+				return -1;
+			}
+		}
+
+		static void release(int fd) {
+			if (fd >= 0) {
+				try {
+					Libc.INSTANCE.close(fd);
+				} catch (LinkageError | RuntimeException e) {
+					// A library that does not work could not have opened it.
+				}
+			}
+		}
+
+		/** Loaded on first use only: JNA is optional. */
+		private interface Libc extends Library {
+			Libc INSTANCE = Native.load("c", Libc.class); //$NON-NLS-1$
+
+			int open(String path, int flags);
+
+			int close(int fd);
 		}
 	}
 

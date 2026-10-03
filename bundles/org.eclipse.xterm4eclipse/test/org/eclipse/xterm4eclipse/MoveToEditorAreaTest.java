@@ -41,7 +41,7 @@ import org.junit.jupiter.api.Test;
  */
 class MoveToEditorAreaTest {
 
-	private static final String SHELL = "/bin/bash --norc --noprofile";
+	private static final String SHELL = TestWorkbench.SHELL;
 
 	private TestWorkbench workbench;
 

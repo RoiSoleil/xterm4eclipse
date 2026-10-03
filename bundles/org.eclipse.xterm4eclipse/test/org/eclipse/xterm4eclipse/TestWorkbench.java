@@ -37,6 +37,19 @@ final class TestWorkbench {
 
 	static final Display DISPLAY = new Display();
 
+	static final boolean MAC = System.getProperty("os.name").startsWith("Mac");
+	static final boolean LINUX = System.getProperty("os.name").startsWith("Linux");
+	/** The modifier of the Eclipse shortcuts (M1): Command on macOS, Ctrl elsewhere. */
+	static final String M1 = MAC ? "COMMAND" : "CTRL";
+	/** The event property of that modifier in the page. */
+	static final String M1_KEY = MAC ? "metaKey" : "ctrlKey";
+	/**
+	 * The bash of the tests, at least 4.4 for bracketed paste (/bin/bash of macOS is 3.2): test.sh
+	 * gives the one of the PATH.
+	 */
+	static final String BASH = System.getProperty("xterm4eclipse.test.bash", "/bin/bash");
+	static final String SHELL = '"' + BASH + "\" --norc --noprofile";
+
 	final Fake page = new Fake();
 	/** The page of every view, the same object each time as in Eclipse. */
 	final IWorkbenchPage workbenchPage = page.as(IWorkbenchPage.class);
@@ -166,7 +179,11 @@ final class TestWorkbench {
 
 	/** Runs the event loop until the condition holds. */
 	static void await(String what, BooleanSupplier condition) {
-		long deadline = System.currentTimeMillis() + 15000;
+		await(what, condition, 15000);
+	}
+
+	static void await(String what, BooleanSupplier condition, long millis) {
+		long deadline = System.currentTimeMillis() + millis;
 		while (!condition.getAsBoolean()) {
 			if (System.currentTimeMillis() > deadline) {
 				throw new AssertionError("Timed out waiting for: " + what);

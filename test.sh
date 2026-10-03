@@ -11,14 +11,17 @@ JACOCO=0.8.15
 JUNIT=6.1.3
 MAVEN=https://repo1.maven.org/maven2
 
-# Class path separator and JVM options of the system.
+# Class path separator and JVM options of the system. The tests run the bash of the PATH, which
+# must be 4.4 or later (bracketed paste): on macOS, the one of Homebrew.
 SEP=:
 JAVA_OPTS=()
+TEST_BASH=$(command -v bash)
 case "$(uname -s)" in
 MINGW* | MSYS* | CYGWIN*)
 	SEP=';'
 	# Java does not understand the /c/... paths of Git Bash.
 	ECLIPSE_HOME=$(cygpath -m "$ECLIPSE_HOME")
+	TEST_BASH=$(cygpath -w "$TEST_BASH")
 	;;
 Darwin)
 	# SWT runs on the main thread of macOS.
@@ -67,7 +70,7 @@ STATUS=0
 # ${@+"$@"}: no arguments is not an error for the bash 3 of macOS.
 java ${JAVA_OPTS[@]+"${JAVA_OPTS[@]}"} -Dfile.encoding=UTF-8 \
 	-javaagent:".cache/org.jacoco.agent-$JACOCO-runtime.jar=destfile=build/jacoco.exec,includes=org.eclipse.xterm4eclipse.*" \
-	-Djava.library.path=build/natives -Dxterm4eclipse.state=build/state \
+	-Djava.library.path=build/natives -Dxterm4eclipse.state=build/state "-Dxterm4eclipse.test.bash=$TEST_BASH" \
 	@build/run.args \
 	org.junit.platform.console.ConsoleLauncher execute --scan-classpath build/test-classes \
 	--details=tree --disable-banner ${@+"$@"} || STATUS=$?

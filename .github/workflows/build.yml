@@ -68,6 +68,9 @@ jobs:
                ;;
             esac
             test -d ~/"${{ matrix.home }}/plugins"
+      -  name: Install bash 5
+         if: runner.os == 'macOS'
+         run: brew list bash > /dev/null 2>&1 || brew install bash
       -  name: Install the browser and a display
          if: runner.os == 'Linux'
          run: |
