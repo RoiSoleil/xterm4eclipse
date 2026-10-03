@@ -1,0 +1,61 @@
+name: xterm-update
+# Opens a pull request when a new version of xterm.js or of one of its addons is out (see
+# xterm/update.mjs), then runs the build on it. The tests must pass before it is merged.
+on:
+   schedule:
+   # Every Monday morning.
+   -  cron: '17 5 * * 1'
+   workflow_dispatch:
+permissions:
+   contents: write
+   pull-requests: write
+   actions: write
+concurrency: xterm-update
+defaults:
+   run:
+      # -e -o pipefail: the update fails the run, not only its output.
+      shell: bash
+jobs:
+   update:
+      runs-on: ubuntu-latest
+      env:
+         BRANCH: xterm-update
+         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      steps:
+      -  name: Checkout
+         uses: actions/checkout@v5
+      -  name: Set up Node
+         uses: actions/setup-node@v5
+         with:
+            node-version: 22
+      -  name: Update
+         run: node xterm/update.mjs --latest | tee "$RUNNER_TEMP/changes.md"
+      -  name: Open the pull request
+         run: |
+            if git diff --quiet; then
+               echo "xterm.js and its addons are up to date."
+               exit 0
+            fi
+            title="Update xterm.js: $(grep -o '@xterm/[a-z0-9-]*: [^ ]* → [^ ]*' "$RUNNER_TEMP/changes.md" | sed 's/@xterm\///' | paste -sd ',' - | sed 's/,/, /g')"
+            version=$(node -p "require('./xterm/package.json').dependencies['@xterm/xterm']")
+            {
+               echo "New versions of xterm.js and of its addons, published at least 7 days ago:"
+               echo
+               cat "$RUNNER_TEMP/changes.md"
+               echo
+               echo "Release notes: https://github.com/xtermjs/xterm.js/releases/tag/$version"
+               echo
+               echo "The files of \`bundles/org.eclipse.xterm4eclipse/web\` are copied from the npm packages by \`node xterm/update.mjs\`, checked against the integrity hashes of \`xterm/package-lock.json\`. The build and the tests run on this pull request: check them, and the breaking changes of a major version, before merging."
+            } > "$RUNNER_TEMP/body.md"
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git checkout -B "$BRANCH"
+            git commit -qam "$title"
+            git push -f origin "$BRANCH"
+            if [ "$(gh pr list --head "$BRANCH" --state open --json number --jq length)" = 0 ]; then
+               gh pr create --head "$BRANCH" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+            else
+               gh pr edit "$BRANCH" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+            fi
+            # A push made with GITHUB_TOKEN does not start the build: start it.
+            gh workflow run build.yml --ref "$BRANCH"

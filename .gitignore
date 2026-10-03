@@ -15,3 +15,6 @@ bin/
 *.log
 hs_err_pid*
 .DS_Store
+
+# xterm.js packages, copied to the web folder of the bundle
+/xterm/node_modules/
