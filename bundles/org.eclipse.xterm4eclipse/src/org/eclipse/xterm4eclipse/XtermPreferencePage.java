@@ -34,6 +34,8 @@ public class XtermPreferencePage extends FieldEditorPreferencePage implements IW
 		addField(new BooleanFieldEditor(XtermPlugin.PREF_WARN_MULTI_LINE_PASTE,
 				"&Confirm a paste of several lines when the shell would run each line at once", //$NON-NLS-1$
 				getFieldEditorParent()));
+		addField(new BooleanFieldEditor(XtermPlugin.PREF_COPY_ON_SELECT,
+				"Co&py the selection to the clipboard as soon as it is made", getFieldEditorParent())); //$NON-NLS-1$
 		addField(new StringFieldEditor(XtermPlugin.PREF_ECLIPSE_SHORTCUTS,
 				"&Eclipse shortcuts that work in the terminal (M1 is Ctrl, or Cmd on macOS):", //$NON-NLS-1$
 				getFieldEditorParent()));

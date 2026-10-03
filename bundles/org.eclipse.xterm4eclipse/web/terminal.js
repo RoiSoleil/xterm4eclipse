@@ -399,6 +399,41 @@
 			}
 		});
 
+		// A paste made by the browser itself (its own shortcuts or menus) goes through the same checks
+		// as ours: control characters removed, several lines confirmed.
+		container.addEventListener('paste', function (e) {
+			e.preventDefault();
+			e.stopImmediatePropagation();
+			var text = e.clipboardData ? e.clipboardData.getData('text/plain') : '';
+			if (text) {
+				userPaste(text);
+			}
+		}, true);
+
+		// The selection is copied as the user makes it: to the PRIMARY selection on Linux, as every X
+		// application does, and to the clipboard if the user asked for it.
+		var selectionTimer = null;
+		term.onSelectionChange(function () {
+			clearTimeout(selectionTimer);
+			selectionTimer = setTimeout(function () {
+				var selection = term.getSelection();
+				if (selection) {
+					javaSelected(selection);
+				}
+			}, 150);
+		});
+		// The middle button pastes the PRIMARY selection on Linux, unless the program tracks the mouse.
+		container.addEventListener('mouseup', function (e) {
+			if (e.button === 1 && cfg.os === 'linux' && term.modes.mouseTrackingMode === 'none') {
+				e.preventDefault();
+				var text = javaPastePrimary();
+				if (text) {
+					userPaste(text);
+				}
+			}
+		});
+		window.xtermSelectAll = function () { term.selectAll(); };
+
 		// Drag and drop: without this the browser opens the dropped file in place of the terminal.
 		// The paths are inserted as typed text, quoted for the shell by the Java side.
 		function allowDrop(e) {
