@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -108,6 +109,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	private static final String MEMENTO_SHELL = "shell"; //$NON-NLS-1$
 	private static final String MEMENTO_DIRECTORY = "directory"; //$NON-NLS-1$
 	private static final String MEMENTO_NAME = "name"; //$NON-NLS-1$
+	private static final String MEMENTO_CLAUDE_SESSION = "claudeSession"; //$NON-NLS-1$
 
 	/** How long the browser may stay hidden while its page loads. */
 	static int revealTimeoutMillis = 1500;
@@ -177,6 +179,10 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	/** Screen content saved before the last Eclipse shutdown, replayed once when the view opens. */
 	private byte[] restoredContent;
 	private File workingDirectory;
+	/** The conversation of Claude Code in this terminal, if it runs Claude Code. */
+	private String claudeSession;
+	/** The next start of Claude Code resumes its conversation. */
+	private boolean resumeClaude;
 	/** Directory announced by the shell itself through an escape sequence, if it does so. */
 	private File reportedDirectory;
 	/** Text to run once the shell has started. */
@@ -241,6 +247,12 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		}
 		if (memento != null && !requested) {
 			customName = memento.getString(MEMENTO_NAME);
+			// Checked: it goes into the command line, which a shell may run.
+			String claude = memento.getString(MEMENTO_CLAUDE_SESSION);
+			if (ClaudeSessions.isId(claude)) {
+				claudeSession = claude;
+				resumeClaude = true;
+			}
 			String directory = memento.getString(MEMENTO_DIRECTORY);
 			if (directory != null && new File(directory).isDirectory()) {
 				workingDirectory = new File(directory);
@@ -261,6 +273,9 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		memento.putString(MEMENTO_SHELL, commandLine);
 		if (customName != null) {
 			memento.putString(MEMENTO_NAME, customName);
+		}
+		if (claudeSession != null) {
+			memento.putString(MEMENTO_CLAUDE_SESSION, claudeSession);
 		}
 		File directory = session != null ? session.currentDirectory() : null;
 		if (directory == null) {
@@ -1536,8 +1551,18 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	}
 
 	private void startNewSession() {
+		String[] arguments = ShellProfiles.parse(commandLine);
+		if (ClaudeSessions.runsClaude(commandLine)) {
+			if (claudeSession == null) {
+				claudeSession = UUID.randomUUID().toString();
+			}
+			// Resumed only if there is a conversation: Claude Code keeps none before the first message.
+			arguments = ClaudeSessions.withSession(arguments, claudeSession,
+					resumeClaude && ClaudeSessions.exists(claudeSession));
+			resumeClaude = false;
+		}
 		try {
-			session = new PtySession(ShellProfiles.parse(commandLine), workingDirectory, cols, rows, this);
+			session = new PtySession(arguments, workingDirectory, cols, rows, this);
 		} catch (IOException | RuntimeException | LinkageError e) {
 			session = null;
 			ended = true;
@@ -1640,6 +1665,13 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		File directory = currentDirectory();
 		if (directory != null && directory.isDirectory()) {
 			workingDirectory = directory;
+		}
+		// Claude Code that ended with an error goes on with its conversation; restarted by the user,
+		// it starts a new one.
+		if (ended) {
+			resumeClaude = true;
+		} else {
+			claudeSession = null;
 		}
 		append(null, "\r\n\u001b[2m[Restarted]\u001b[0m\r\n".getBytes(StandardCharsets.UTF_8)); //$NON-NLS-1$
 		keepAboveTheNewShell();

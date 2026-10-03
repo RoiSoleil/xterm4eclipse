@@ -33,6 +33,10 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
 - The tab shows as busy while a program reports its progress (OSC 9;4, as on the tabs of Windows
   Terminal).
 - After a restart of Eclipse each terminal reopens with the same shell, directory and screen content.
+- A terminal running Claude Code starts it with its own session id: when Eclipse reopens the
+  terminal, Claude Code resumes that conversation (`--resume`), even with several terminals of
+  Claude Code in the same folder. A Claude Code that ends with an error resumes it too on Enter;
+  *Restart* starts a new conversation.
 - `exit` closes the view. A program run on its own (Claude Code...) that fails, or a shell that cannot
   start, keeps its view open with its last output: Enter starts it again. *Restart* in the view menu
   starts a fresh shell in the directory of the current one.

@@ -361,6 +361,57 @@ class XtermViewTest {
 	}
 
 	@Test
+	void claudeCodeResumesItsConversationWhenTheTerminalComesBack() throws Exception {
+		Path previous = ClaudeSessions.home;
+		ClaudeSessions.home = Files.createTempDirectory("xterm-claude-home");
+		try {
+			// A Claude Code that shows how it was started.
+			Path folder = Files.createTempDirectory(FOLDER.toPath(), "claude");
+			Path program;
+			String commandLine;
+			if (TestWorkbench.WINDOWS) {
+				program = Files.writeString(folder.resolve("claude.cmd"), "@echo args: %*\r\n@ping -n 30 127.0.0.1 > nul\r\n");
+				commandLine = "cmd.exe /c " + program;
+			} else {
+				program = Files.writeString(folder.resolve("claude"), "#!/bin/sh\necho \"args: $*\"\nsleep 30\n");
+				assertTrue(program.toFile().setExecutable(true));
+				commandLine = '"' + program.toString() + '"';
+			}
+			ShellProfiles.setDefaultCommandLine(commandLine);
+			XtermView view = new XtermView();
+			workbench.open(view, null, null);
+			await("started with a session", () -> screen(view).contains("args: --session-id "));
+			XMLMemento memento = XMLMemento.createWriteRoot("view");
+			view.saveState(memento);
+			String id = memento.getString("claudeSession");
+			assertTrue(ClaudeSessions.isId(id), id);
+			assertTrue(screen(view).contains("args: --session-id " + id));
+			assertEquals(commandLine, memento.getString("shell"), "the command line of the user is kept");
+
+			// Eclipse restarts before the first message: no conversation yet, the same one starts.
+			XtermView second = new XtermView();
+			workbench.open(second, "second", memento);
+			await("same session", () -> screen(second).contains("args: --session-id " + id));
+
+			// Once Claude Code has kept the conversation, the terminal resumes it.
+			Path project = Files.createDirectories(ClaudeSessions.home.resolve("projects").resolve("-the-project"));
+			Files.writeString(project.resolve(id + ".jsonl"), "{}\n");
+			XtermView third = new XtermView();
+			workbench.open(third, "third", memento);
+			await("resumed", () -> screen(third).contains("args: --resume " + id));
+
+			// A state that is not a session id never reaches the command line.
+			memento.putString("claudeSession", "x; echo injected");
+			XtermView fourth = new XtermView();
+			workbench.open(fourth, "fourth", memento);
+			await("new session", () -> screen(fourth).contains("args: --session-id "));
+			assertFalse(screen(fourth).contains("injected"));
+		} finally {
+			ClaudeSessions.home = previous;
+		}
+	}
+
+	@Test
 	void unknownShellIsReportedInTheTerminal() throws Exception {
 		ShellProfiles.setDefaultCommandLine("/nonexistent/xterm-shell");
 		XtermView view = new XtermView();
