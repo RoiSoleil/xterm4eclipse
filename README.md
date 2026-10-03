@@ -70,6 +70,9 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
 - Font and size of the terminal (by default those of the text font of Eclipse), lines kept above the
   screen, cursor style and blinking, Option as Meta on macOS. Ctrl+mouse wheel (Cmd on macOS) zooms
   a terminal.
+- Environment variables for the shells in the preferences, one per line: `NAME=value` (with
+  `${OTHER}` for the value of another variable, for example `PATH=/opt/tools/bin:${PATH}`) or `-NAME`
+  to remove one.
 - Preferences in *Window > Preferences > Xterm Terminal*.
 
 # Build

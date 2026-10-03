@@ -32,7 +32,7 @@ class XtermPreferencePageTest {
 		for (String key : new String[] {XtermPlugin.PREF_DEFAULT_SHELL, XtermPlugin.PREF_FOCUS_ON_FINISH,
 				XtermPlugin.PREF_RESTORE_HISTORY, XtermPlugin.PREF_ECLIPSE_SHORTCUTS, XtermPlugin.PREF_WARN_MULTI_LINE_PASTE, XtermPlugin.PREF_COPY_ON_SELECT, XtermPlugin.PREF_FONT_FAMILY,
 				XtermPlugin.PREF_FONT_SIZE, XtermPlugin.PREF_SCROLLBACK, XtermPlugin.PREF_CURSOR_STYLE, XtermPlugin.PREF_CURSOR_BLINK,
-				XtermPlugin.PREF_MAC_OPTION_IS_META}) {
+				XtermPlugin.PREF_MAC_OPTION_IS_META, XtermPlugin.PREF_ENVIRONMENT}) {
 			XtermPlugin.preferences().setToDefault(key);
 		}
 	}
@@ -54,7 +54,7 @@ class XtermPreferencePageTest {
 		List<Combo> combos = new ArrayList<>();
 		collect(page.getControl(), checkboxes, texts, combos);
 		assertEquals(6, checkboxes.size());
-		assertEquals(5, texts.size());
+		assertEquals(6, texts.size());
 		assertEquals(1, combos.size());
 		assertFalse(checkboxes.get(0).getSelection(), "focus on finish is off by default");
 		assertTrue(checkboxes.get(1).getSelection(), "history is restored by default");
@@ -65,14 +65,19 @@ class XtermPreferencePageTest {
 		assertEquals("", texts.get(1).getText(), "text font of Eclipse by default");
 		assertEquals("0", texts.get(2).getText());
 		assertEquals("10000", texts.get(3).getText());
-		assertEquals(EclipseShortcuts.DEFAULTS, texts.get(4).getText());
+		assertEquals("", texts.get(4).getText(), "no variables by default");
+		assertEquals(EclipseShortcuts.DEFAULTS, texts.get(5).getText());
 		assertEquals("Block", combos.get(0).getText());
 
 		texts.get(0).setText("/usr/bin/fish");
 		texts.get(1).setText("Fira Code");
 		texts.get(2).setText("14");
 		texts.get(3).setText("500");
-		texts.get(4).setText("M1+3");
+		type(texts.get(4), "not a variable");
+		assertFalse(page.isValid(), "a wrong line is refused");
+		type(texts.get(4), "EDITOR=vim\n-PAGER");
+		assertTrue(page.isValid());
+		texts.get(5).setText("M1+3");
 		combos.get(0).select(2);
 		combos.get(0).notifyListeners(SWT.Selection, new Event());
 		toggle(checkboxes.get(0), true);
@@ -95,7 +100,14 @@ class XtermPreferencePageTest {
 		assertEquals("bar", XtermPlugin.preference(XtermPlugin.PREF_CURSOR_STYLE));
 		assertFalse(XtermPlugin.isEnabled(XtermPlugin.PREF_CURSOR_BLINK));
 		assertTrue(XtermPlugin.isEnabled(XtermPlugin.PREF_MAC_OPTION_IS_META));
+		assertEquals("EDITOR=vim\n-PAGER", XtermPlugin.preference(XtermPlugin.PREF_ENVIRONMENT));
 
+	}
+
+	/** Sets the text as typed: the field checks it when a key is released. */
+	private static void type(Text text, String value) {
+		text.setText(value);
+		text.notifyListeners(SWT.KeyUp, new Event());
 	}
 
 	private static void toggle(Button checkbox, boolean selected) {
