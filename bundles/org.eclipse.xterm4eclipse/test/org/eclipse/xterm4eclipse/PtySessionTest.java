@@ -13,8 +13,11 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 
+import org.eclipse.cdt.utils.pty.ConPTY;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
 class PtySessionTest implements PtySession.Listener {
 
@@ -58,6 +61,16 @@ class PtySessionTest implements PtySession.Listener {
 		if (session != null) {
 			session.dispose();
 		}
+	}
+
+	/**
+	 * The pseudo console of Windows, which the pseudo terminals of CDT use there. Outside of Eclipse
+	 * CDT cannot report why it does not start: this test does.
+	 */
+	@Test
+	@EnabledOnOs(OS.WINDOWS)
+	void pseudoConsoleOfWindowsStarts() throws Exception {
+		new ConPTY().close();
 	}
 
 	@Test
