@@ -37,6 +37,10 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
   terminal, Claude Code resumes that conversation (`--resume`), even with several terminals of
   Claude Code in the same folder. A Claude Code that ends with an error resumes it too on Enter;
   *Restart* starts a new conversation.
+- When the [MCP server of Eclipse](https://github.com/vogellacompany/eclipse-mcp-server) runs, a new
+  terminal of Claude Code that does not know it yet offers to add it (`claude mcp add --scope user
+  eclipse`, with the token of the server), before Claude Code starts so that it uses it at once:
+  *Add*, *Not Now* (until Eclipse restarts) or *Never Ask* (also in the preferences).
 - `exit` closes the view. A program run on its own (Claude Code...) that fails, or a shell that cannot
   start, keeps its view open with its last output: Enter starts it again. *Restart* in the view menu
   starts a fresh shell in the directory of the current one.
