@@ -187,7 +187,18 @@ class XtermViewTest {
 		workbench.shells.get(0).setSize(1000, 600);
 		pump(800);
 		Object columns = view.browser.evaluate("return document.querySelector('.xterm-rows > div').parentElement.children.length");
-		run(view, "echo rows=$(stty size | cut -d' ' -f1)", "rows=" + ((Number) columns).intValue());
+		String expected = "rows=" + ((Number) columns).intValue();
+		// Git Bash may lose a key typed while it takes a resize of the pseudo console of Windows: the
+		// line is cleared (Ctrl+U) and typed again until the command runs.
+		for (int attempt = 0; attempt < 3 && !screen(view).contains("\n" + expected); attempt++) {
+			type(view, "\u0015echo rows=$(stty size | cut -d' ' -f1)\r");
+			try {
+				await("output", () -> screen(view).contains("\n" + expected), 5000);
+			} catch (AssertionError e) {
+				// Typed again.
+			}
+		}
+		assertTrue(screen(view).contains("\n" + expected), screen(view));
 	}
 
 	@Test
