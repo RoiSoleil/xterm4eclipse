@@ -61,6 +61,8 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
   tracks the mouse). *Copy on select* in the preferences; *Select All* in the view menu.
 - A paste of several lines is confirmed first (paste, paste as one line, cancel) when the shell
   would run each line at once, without bracketed paste (cmd.exe, sh...), as in VS Code.
+- Files dropped on the terminal are typed as paths quoted for its shell (bash, PowerShell, cmd);
+  in WSL, `C:\Users\me` becomes `/mnt/c/Users/me` and `\\wsl$\Ubuntu\home\me` becomes `/home/me`.
 - Pasted, dropped and sent texts are typed as text: their control characters (escape sequences) are
   removed, so that a copied text cannot run a command by itself.
 - Security: the browser of the terminal can only show its own page; only http and https links are

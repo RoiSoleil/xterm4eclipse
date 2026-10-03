@@ -1546,6 +1546,11 @@ class XtermViewTest {
 				XtermView.quotePaths(List.of("C:\\Users\\me", "C:\\My Files\\it's"), "powershell.exe -NoLogo"));
 		assertEquals("'a b' ", XtermView.quotePaths(List.of("a b"), "pwsh"));
 		assertEquals("x ", XtermView.quotePaths(List.of("x"), null));
+		assertEquals("/mnt/c/Users/me/a.txt '/mnt/d/My Files/it'\\''s' /home/me / ",
+				XtermView.quotePaths(List.of("C:\\Users\\me\\a.txt", "d:\\My Files\\it's", "\\\\wsl$\\Ubuntu\\home\\me",
+						"\\\\wsl.localhost\\Ubuntu"), "C:\\Windows\\System32\\wsl.exe -d Ubuntu"));
+		assertEquals("/mnt/c/ ", XtermView.quotePaths(List.of("C:\\"), "wsl"));
+		assertEquals("'//server/share/a b' ", XtermView.quotePaths(List.of("\\\\server\\share\\a b"), "wsl.exe"));
 		assertEquals(List.of(new File("C:/Users/me").getPath()), XtermView.droppedPaths("file:/C:/Users/me"));
 		assertEquals(List.of(new File("//server/share/x").getPath()), XtermView.droppedPaths("file://server/share/x"));
 		assertEquals(List.of(new File("/tmp").getPath()), XtermView.droppedPaths("file://localhost/tmp"));
