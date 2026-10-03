@@ -1,7 +1,9 @@
 package org.eclipse.xterm4eclipse;
 
 import org.eclipse.jface.preference.BooleanFieldEditor;
+import org.eclipse.jface.preference.ComboFieldEditor;
 import org.eclipse.jface.preference.FieldEditorPreferencePage;
+import org.eclipse.jface.preference.IntegerFieldEditor;
 import org.eclipse.jface.preference.StringFieldEditor;
 import org.eclipse.ui.IWorkbench;
 import org.eclipse.ui.IWorkbenchPreferencePage;
@@ -36,6 +38,23 @@ public class XtermPreferencePage extends FieldEditorPreferencePage implements IW
 				getFieldEditorParent()));
 		addField(new BooleanFieldEditor(XtermPlugin.PREF_COPY_ON_SELECT,
 				"Co&py the selection to the clipboard as soon as it is made", getFieldEditorParent())); //$NON-NLS-1$
+		addField(new StringFieldEditor(XtermPlugin.PREF_FONT_FAMILY,
+				"Fo&nt (empty: text font of Eclipse):", getFieldEditorParent())); //$NON-NLS-1$
+		IntegerFieldEditor fontSize = new IntegerFieldEditor(XtermPlugin.PREF_FONT_SIZE,
+				"Font si&ze in points (0: the one of the text font):", getFieldEditorParent()); //$NON-NLS-1$
+		fontSize.setValidRange(0, XtermView.MAX_FONT_SIZE);
+		addField(fontSize);
+		IntegerFieldEditor scrollback = new IntegerFieldEditor(XtermPlugin.PREF_SCROLLBACK,
+				"Lines &kept above the screen:", getFieldEditorParent()); //$NON-NLS-1$
+		scrollback.setValidRange(0, XtermView.MAX_SCROLLBACK);
+		addField(scrollback);
+		addField(new ComboFieldEditor(XtermPlugin.PREF_CURSOR_STYLE, "C&ursor:", //$NON-NLS-1$
+				new String[][] {{"Block", "block"}, {"Underline", "underline"}, {"Bar", "bar"}}, //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
+				getFieldEditorParent()));
+		addField(new BooleanFieldEditor(XtermPlugin.PREF_CURSOR_BLINK, "B&linking cursor", getFieldEditorParent())); //$NON-NLS-1$
+		addField(new BooleanFieldEditor(XtermPlugin.PREF_MAC_OPTION_IS_META,
+				"macOS: the &Option key is Meta (Option+B, Option+F... in the shell) instead of typing accents", //$NON-NLS-1$
+				getFieldEditorParent()));
 		addField(new StringFieldEditor(XtermPlugin.PREF_ECLIPSE_SHORTCUTS,
 				"&Eclipse shortcuts that work in the terminal (M1 is Ctrl, or Cmd on macOS):", //$NON-NLS-1$
 				getFieldEditorParent()));

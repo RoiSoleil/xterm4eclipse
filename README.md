@@ -67,6 +67,9 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
   opened, and a file path is always opened in an Eclipse editor (the text editor when its default
   editor is a program of the system), never run. Shells and Claude Code are only looked up in the
   absolute directories of the PATH.
+- Font and size of the terminal (by default those of the text font of Eclipse), lines kept above the
+  screen, cursor style and blinking, Option as Meta on macOS. Ctrl+mouse wheel (Cmd on macOS) zooms
+  a terminal.
 - Preferences in *Window > Preferences > Xterm Terminal*.
 
 # Build

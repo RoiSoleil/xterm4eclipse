@@ -95,8 +95,10 @@
 
 		var term = new Terminal({
 			allowProposedApi: true,
-			cursorBlink: true,
-			scrollback: 10000,
+			cursorBlink: cfg.cursorBlink !== false,
+			cursorStyle: cfg.cursorStyle || 'block',
+			scrollback: typeof cfg.scrollback === 'number' ? cfg.scrollback : 10000,
+			macOptionIsMeta: !!cfg.macOptionIsMeta,
 			fontFamily: cfg.fontFamily,
 			fontSize: cfg.fontSize,
 			theme: theme
@@ -499,6 +501,27 @@
 		});
 		term.onTitleChange(function (title) { javaTitle(title); });
 
+		// Ctrl+mouse wheel (Cmd on macOS) zooms the font of this terminal, as in IntelliJ.
+		var baseFontSize = cfg.fontSize;
+		var zoom = 0;
+		function zoomed() {
+			return Math.max(6, Math.min(100, baseFontSize + zoom));
+		}
+		container.addEventListener('wheel', function (e) {
+			if (!(cfg.os === 'mac' ? e.metaKey : e.ctrlKey) || !e.deltaY) {
+				return;
+			}
+			e.preventDefault();
+			e.stopPropagation();
+			var size = zoomed();
+			zoom += e.deltaY < 0 ? 1 : -1;
+			zoom = zoomed() - baseFontSize;
+			if (zoomed() !== size) {
+				term.options.fontSize = zoomed();
+				doFit();
+			}
+		}, { capture: true, passive: false });
+
 		var started = false;
 		function doFit() {
 			if (!container.clientWidth || !container.clientHeight) {
@@ -532,12 +555,24 @@
 			currentDark = config.dark;
 			term.options.theme = themeOf(config);
 			term.options.fontFamily = config.fontFamily;
-			term.options.fontSize = config.fontSize;
+			baseFontSize = config.fontSize;
+			term.options.fontSize = zoomed();
+			term.options.cursorBlink = config.cursorBlink !== false;
+			term.options.cursorStyle = config.cursorStyle || 'block';
+			if (typeof config.scrollback === 'number') {
+				term.options.scrollback = config.scrollback;
+			}
+			term.options.macOptionIsMeta = !!config.macOptionIsMeta;
 			shortcuts = config.shortcuts || [];
 			warnMultiLinePaste = config.warnMultiLinePaste !== false;
 			doFit();
 		};
 		window.xtermTheme = function () { return term.options.theme; };
+		window.xtermOptions = function () {
+			var o = term.options;
+			return JSON.stringify({ fontFamily: o.fontFamily, fontSize: o.fontSize, scrollback: o.scrollback,
+				cursorStyle: o.cursorStyle, cursorBlink: o.cursorBlink, macOptionIsMeta: o.macOptionIsMeta });
+		};
 		window.addEventListener('focus', function () {
 			if (find.classList.contains('open') && document.activeElement === findInput) {
 				return;
