@@ -26,6 +26,8 @@ final class TerminalTransfer implements PtySession.Listener {
 	/** The size of the old terminal: the screen is drawn again at this size, then fitted. */
 	final int cols;
 	final int rows;
+	/** The tab of the old part told that a command had finished or a program asked for attention. */
+	boolean attention;
 
 	private static final int MAX_KEPT_BYTES = 1024 * 1024;
 

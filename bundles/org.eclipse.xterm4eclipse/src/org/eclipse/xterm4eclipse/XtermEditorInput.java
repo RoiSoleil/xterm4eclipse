@@ -16,6 +16,8 @@ public final class XtermEditorInput implements IEditorInput, IPersistableElement
 	private static final String[] STATE_KEYS = {"shell", "directory", "name"}; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 
 	private final String id;
+	/** The shell of the terminal, for its icon; {@code null} if unknown. */
+	private final String commandLine;
 	/** The state saved by an earlier session of Eclipse, until the editor is created. */
 	private final IMemento state;
 	private TerminalTransfer transfer;
@@ -23,14 +25,19 @@ public final class XtermEditorInput implements IEditorInput, IPersistableElement
 
 	/** A terminal moving to the editor area. */
 	XtermEditorInput(TerminalTransfer transfer) {
-		this(XtermView.nextId("e"), null); //$NON-NLS-1$
+		this(XtermView.nextId("e"), null, transfer.commandLine); //$NON-NLS-1$
 		this.transfer = transfer;
 	}
 
 	/** A terminal of an earlier session of Eclipse. */
 	XtermEditorInput(String id, IMemento state) {
+		this(id, state, state == null ? null : state.getString("shell")); //$NON-NLS-1$
+	}
+
+	private XtermEditorInput(String id, IMemento state, String commandLine) {
 		this.id = id;
 		this.state = state;
+		this.commandLine = commandLine;
 	}
 
 	String id() {
@@ -65,7 +72,9 @@ public final class XtermEditorInput implements IEditorInput, IPersistableElement
 
 	@Override
 	public ImageDescriptor getImageDescriptor() {
-		return ImageDescriptor.createFromFile(XtermEditorInput.class, "/icons/xterm.png"); //$NON-NLS-1$
+		// The icon of the shell, as on the tab: shown in the lists of editors.
+		String icon = commandLine == null ? "icons/xterm.png" : ShellProfiles.iconOf(commandLine); //$NON-NLS-1$
+		return ImageDescriptor.createFromFile(XtermEditorInput.class, '/' + icon);
 	}
 
 	@Override

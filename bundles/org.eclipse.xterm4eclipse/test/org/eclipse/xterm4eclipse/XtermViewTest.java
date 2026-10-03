@@ -33,6 +33,7 @@ import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.jface.action.ActionContributionItem;
 import org.eclipse.jface.action.IAction;
+import org.eclipse.e4.ui.workbench.IPresentationEngine;
 import org.eclipse.jface.action.IMenuCreator;
 import org.eclipse.jface.text.TextSelection;
 import org.eclipse.jface.bindings.Binding;
@@ -436,6 +437,12 @@ class XtermViewTest {
 		assertEquals(idle.getBounds(), running.getBounds(), "same size, the badge is drawn over the icon");
 		await("done badge", () -> view.getTitleImage() != running);
 		assertImage(running, view.getTitleImage(), false);
+
+		// The model of the tab has the icon of the shell too: the one shown before the part is created,
+		// after a restart, and kept in the layout of the workbench.
+		TestWorkbench.TabModel tab = workbench.tabs.get(0);
+		await("icon in the model of the tab", () -> "platform:/plugin/org.eclipse.xterm4eclipse/icons/shells/bash.png".equals(tab.iconUri));
+		assertSame(view.getTitleImage(), tab.transientData.get(IPresentationEngine.OVERRIDE_ICON_IMAGE_KEY));
 
 		// Other programs show their own icon, for example Claude Code or PowerShell.
 		assertEquals("icons/shells/claude.png", ShellProfiles.iconOf("/bin/zsh -l -i -c claude"));
