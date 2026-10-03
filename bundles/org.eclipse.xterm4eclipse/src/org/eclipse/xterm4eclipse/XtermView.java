@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.eclipse.core.commands.ExecutionException;
@@ -1271,12 +1272,35 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		return result.toString();
 	}
 
+	private static final Pattern WINDOWS_DRIVE = Pattern.compile("([A-Za-z]):[\\\\/](.*)"); //$NON-NLS-1$
+	/** \\wsl$\Ubuntu\... or \\wsl.localhost\Ubuntu\...: the files of a WSL distribution. */
+	private static final Pattern WSL_SHARE = Pattern.compile("(?i)[\\\\/]{2}wsl(?:\\$|\\.localhost)[\\\\/][^\\\\/]+(.*)"); //$NON-NLS-1$
+
+	/**
+	 * A Windows path as seen from WSL: C:\Users\me is /mnt/c/Users/me, and a file of the Linux
+	 * system itself, \\wsl$\Ubuntu\home\me (or \\wsl.localhost\...), is /home/me.
+	 */
+	static String wslPath(String path) {
+		Matcher drive = WINDOWS_DRIVE.matcher(path);
+		if (drive.matches()) {
+			return "/mnt/" + Character.toLowerCase(drive.group(1).charAt(0)) + '/' + drive.group(2).replace('\\', '/'); //$NON-NLS-1$
+		}
+		Matcher linux = WSL_SHARE.matcher(path);
+		if (linux.matches()) {
+			String rest = linux.group(1).replace('\\', '/');
+			return rest.isEmpty() ? "/" : rest; //$NON-NLS-1$
+		}
+		return path.replace('\\', '/');
+	}
+
 	private static String quotePath(String path, String shell) {
 		switch (shell) {
 		case "cmd": //$NON-NLS-1$
 			return path.matches("[^\\s&()\\[\\]{}^=;!'+,`~%]*") ? path : '"' + path + '"'; //$NON-NLS-1$
 		case "powershell", "pwsh": //$NON-NLS-1$ //$NON-NLS-2$
 			return path.matches("[\\w\\\\/:.\\-]*") ? path : "'" + path.replace("'", "''") + "'"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+		case "wsl": //$NON-NLS-1$
+			return quotePath(wslPath(path), "bash"); //$NON-NLS-1$
 		default:
 			// Git Bash and Cygwin understand C:/Users/me, not C:\Users\me.
 			if (IS_WINDOWS || path.matches("[A-Za-z]:\\\\.*")) { //$NON-NLS-1$
