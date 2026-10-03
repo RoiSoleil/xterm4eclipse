@@ -56,6 +56,7 @@ import org.eclipse.swt.dnd.Clipboard;
 import org.eclipse.swt.dnd.DND;
 import org.eclipse.swt.dnd.TextTransfer;
 import org.eclipse.swt.dnd.Transfer;
+import org.eclipse.swt.events.TraverseEvent;
 import org.eclipse.swt.graphics.FontData;
 import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.graphics.RGB;
@@ -340,6 +341,16 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			}
 		}));
 		browser.addOpenWindowListener(event -> event.required = true);
+		browser.addTraverseListener(XtermView::keepKeysOfTheTerminal);
+		if ("gtk".equals(SWT.getPlatform())) { //$NON-NLS-1$
+			// The WebKitGTK of SWT keeps Escape from the page, it only tells the SWT listeners: Escape
+			// did not reach Claude Code or vim.
+			browser.addListener(SWT.KeyDown, event -> {
+				if (event.keyCode == SWT.ESC && (event.stateMask & SWT.MODIFIER_MASK) == 0) {
+					browser.execute("xtermEscape()"); //$NON-NLS-1$
+				}
+			});
+		}
 		// The java* functions only exist in the page once it is loaded, so the page waits for us.
 		browser.addProgressListener(
 				ProgressListener.completedAdapter(event -> browser.execute("xtermInit(" + config() + ")"))); //$NON-NLS-1$ //$NON-NLS-2$
@@ -1852,6 +1863,21 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	private void keepAboveTheNewShell() {
 		if (IS_WINDOWS) {
 			append(null, "\r\n".repeat(Math.max(rows, 1)).getBytes(StandardCharsets.UTF_8)); //$NON-NLS-1$
+		}
+	}
+
+	/**
+	 * Escape, Enter, Tab and Shift+Tab are keys of the shell and of its programs (Escape in Claude
+	 * Code or vim, Shift+Tab to change the mode of Claude Code), not moves of the focus: SWT would
+	 * take Escape for itself. Ctrl+PageUp / PageDown stay with Eclipse, to go to the next editor.
+	 */
+	static void keepKeysOfTheTerminal(TraverseEvent event) {
+		switch (event.detail) {
+		case SWT.TRAVERSE_ESCAPE, SWT.TRAVERSE_RETURN, SWT.TRAVERSE_TAB_NEXT, SWT.TRAVERSE_TAB_PREVIOUS:
+			event.doit = false;
+			break;
+		default:
+			break;
 		}
 	}
 

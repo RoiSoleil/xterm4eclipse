@@ -61,6 +61,7 @@ import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.graphics.ImageData;
 import org.eclipse.swt.graphics.RGB;
+import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Event;
 import org.eclipse.swt.widgets.Menu;
 import org.eclipse.swt.widgets.MenuItem;
@@ -524,6 +525,63 @@ class XtermViewTest {
 			EclipseMcp.workspace = null;
 			XtermView.mcpPostponed = false;
 		}
+	}
+
+	/**
+	 * Real keys, posted to the display: the WebKitGTK of SWT kept Escape from the page. Posting keys
+	 * needs X11 (macOS asks for a permission); the other browsers give Escape to the page.
+	 */
+	@Test
+	@org.junit.jupiter.api.condition.EnabledOnOs(org.junit.jupiter.api.condition.OS.LINUX)
+	void escapeTabAndEnterOfTheKeyboardGoToTheProgram() throws Exception {
+		XtermView view = open();
+		type(view, "cat -v\r");
+		await("program running", view::isDirty);
+		workbench.shells.get(0).forceActive();
+		view.browser.setFocus();
+		pump(500);
+		// Real keys of the keyboard, through SWT: not events made up in the page.
+		for (int key : new int[] {SWT.ESC, SWT.TAB}) {
+			pressKey(key, 0);
+		}
+		pressKey(SWT.TAB, SWT.SHIFT);
+		pressKey(SWT.CR, 0);
+		// cat -v shows Escape as ^[ and Shift+Tab as ^[[Z, the tab between them as spaces.
+		await("keys received", () -> screen(view).matches("(?s).*\\^\\[ +\\^\\[\\[Z.*"));
+
+		// Escape closes the find bar, and then only that.
+		pressKey(SWT.CR, 0);
+		pump(500);
+		int escapes = screen(view).split("\\^\\[", -1).length;
+		view.browser.evaluate("xtermFind(); return true;");
+		await("find bar", () -> Boolean.TRUE.equals(view.browser.evaluate("return document.getElementById('find').classList.contains('open')")));
+		pressKey(SWT.ESC, 0);
+		await("find bar closed", () -> Boolean.FALSE.equals(view.browser.evaluate("return document.getElementById('find').classList.contains('open')")));
+		pressKey(SWT.CR, 0);
+		pump(500);
+		assertEquals(escapes, screen(view).split("\\^\\[", -1).length, "no Escape for the program");
+		type(view, "\u0003");
+	}
+
+	private static void pressKey(int key, int modifier) {
+		Display display = TestWorkbench.DISPLAY;
+		if (modifier != 0) {
+			post(display, SWT.KeyDown, modifier, 0);
+		}
+		post(display, SWT.KeyDown, key, key == SWT.TAB ? '\t' : key == SWT.CR ? '\r' : key == SWT.ESC ? (char) 27 : 0);
+		post(display, SWT.KeyUp, key, key == SWT.TAB ? '\t' : key == SWT.CR ? '\r' : key == SWT.ESC ? (char) 27 : 0);
+		if (modifier != 0) {
+			post(display, SWT.KeyUp, modifier, 0);
+		}
+		pump(100);
+	}
+
+	private static void post(Display display, int type, int keyCode, int character) {
+		Event event = new Event();
+		event.type = type;
+		event.keyCode = keyCode;
+		event.character = (char) character;
+		assertTrue(display.post(event), "key posted");
 	}
 
 	@Test

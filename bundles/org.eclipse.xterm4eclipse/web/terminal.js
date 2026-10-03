@@ -283,6 +283,14 @@
 			search.clearDecorations();
 			term.focus();
 		}
+		// The WebKitGTK of SWT keeps Escape from the page: Eclipse passes it on, as the page would take it.
+		window.xtermEscape = function () {
+			if (find.classList.contains('open')) {
+				closeFind();
+			} else {
+				term.input('\x1b', true);
+			}
+		};
 		findInput.addEventListener('input', function () { findNext(false, true); });
 		findInput.addEventListener('keydown', function (e) {
 			if (e.key === 'Enter') {
