@@ -1302,9 +1302,12 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 
 	private String config() {
 		FontData font = JFaceResources.getTextFont().getFontData()[0];
-		String family = "'" + font.getName().replace("\\", "").replace("'", "") + "', 'DejaVu Sans Mono', monospace"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
+		// The font of the terminal, or else the text font of Eclipse.
+		String chosenFamily = XtermPlugin.preference(XtermPlugin.PREF_FONT_FAMILY).trim();
+		String family = cssFontFamily(chosenFamily.isEmpty() ? font.getName() : chosenFamily);
 		// Font heights are in points, CSS wants pixels (96 dpi reference).
-		int size = Math.max(8, Math.round(font.getHeight() * 96f / 72f));
+		int chosenSize = Math.min(MAX_FONT_SIZE, XtermPlugin.preferences().getInt(XtermPlugin.PREF_FONT_SIZE));
+		int size = Math.max(8, Math.round((chosenSize > 0 ? chosenSize : font.getHeight()) * 96f / 72f));
 		// Use the colors the Eclipse theme gave to the view, so that the terminal looks like its
 		// neighbours whatever the theme is.
 		RGB background = browser.getParent().getBackground().getRGB();
@@ -1316,8 +1319,17 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			foreground = display.getSystemColor(SWT.COLOR_LIST_FOREGROUND).getRGB();
 			dark = luminance(background) < 0.5;
 		}
-		StringBuilder json = new StringBuilder("{\"fontFamily\":\"").append(family.replace("\"", "")) //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-				.append("\",\"fontSize\":").append(size).append(",\"dark\":").append(dark) //$NON-NLS-1$ //$NON-NLS-2$
+		String cursorStyle = XtermPlugin.preference(XtermPlugin.PREF_CURSOR_STYLE);
+		if (!CURSOR_STYLES.contains(cursorStyle)) {
+			cursorStyle = "block"; //$NON-NLS-1$
+		}
+		int scrollback = Math.max(0, Math.min(MAX_SCROLLBACK, XtermPlugin.preferences().getInt(XtermPlugin.PREF_SCROLLBACK)));
+		StringBuilder json = new StringBuilder("{\"fontFamily\":").append(jsonString(family)) //$NON-NLS-1$
+				.append(",\"fontSize\":").append(size).append(",\"dark\":").append(dark) //$NON-NLS-1$ //$NON-NLS-2$
+				.append(",\"scrollback\":").append(scrollback) //$NON-NLS-1$
+				.append(",\"cursorStyle\":\"").append(cursorStyle).append('"') //$NON-NLS-1$
+				.append(",\"cursorBlink\":").append(XtermPlugin.isEnabled(XtermPlugin.PREF_CURSOR_BLINK)) //$NON-NLS-1$
+				.append(",\"macOptionIsMeta\":").append(XtermPlugin.isEnabled(XtermPlugin.PREF_MAC_OPTION_IS_META)) //$NON-NLS-1$
 				.append(",\"os\":\"").append(IS_WINDOWS ? "windows" : IS_MAC ? "mac" : "linux").append('"') //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 				.append(",\"background\":\"").append(hex(background)).append('"') //$NON-NLS-1$
 				.append(",\"warnMultiLinePaste\":").append(XtermPlugin.isEnabled(XtermPlugin.PREF_WARN_MULTI_LINE_PASTE)) //$NON-NLS-1$
@@ -1328,6 +1340,31 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			json.append(",\"foreground\":\"").append(hex(foreground)).append('"'); //$NON-NLS-1$
 		}
 		return json.append('}').toString();
+	}
+
+	static final java.util.Set<String> CURSOR_STYLES = java.util.Set.of("block", "underline", "bar"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+	static final int MAX_SCROLLBACK = 1_000_000;
+	static final int MAX_FONT_SIZE = 72;
+
+	/** The CSS font list for a font name, with fallbacks; the name keeps only what a font name holds. */
+	static String cssFontFamily(String name) {
+		String clean = name.replaceAll("[^\\p{L}\\p{N} ._+-]", "").trim(); //$NON-NLS-1$ //$NON-NLS-2$
+		return (clean.isEmpty() ? "" : "'" + clean + "', ") + "'DejaVu Sans Mono', monospace"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+	}
+
+	/** A JSON (and JavaScript) string literal for the text. */
+	static String jsonString(String text) {
+		StringBuilder result = new StringBuilder("\""); //$NON-NLS-1$
+		for (char c : text.toCharArray()) {
+			if (c == '"' || c == '\\') {
+				result.append('\\').append(c);
+			} else if (c < 0x20 || c == 0x2028 || c == 0x2029 || c == '<' || c == '>') {
+				result.append(String.format("\\u%04x", (int) c)); //$NON-NLS-1$
+			} else {
+				result.append(c);
+			}
+		}
+		return result.append('"').toString();
 	}
 
 	private static double luminance(RGB rgb) {

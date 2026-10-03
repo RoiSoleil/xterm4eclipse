@@ -39,6 +39,17 @@ final class XtermPlugin {
 	static final String PREF_WARN_MULTI_LINE_PASTE = "warnMultiLinePaste"; //$NON-NLS-1$
 	/** Whether the selection goes to the clipboard as soon as it is made. */
 	static final String PREF_COPY_ON_SELECT = "copyOnSelect"; //$NON-NLS-1$
+	/** Font of the terminal, empty for the text font of Eclipse. */
+	static final String PREF_FONT_FAMILY = "fontFamily"; //$NON-NLS-1$
+	/** Font size in points, 0 for the one of the text font of Eclipse. */
+	static final String PREF_FONT_SIZE = "fontSize"; //$NON-NLS-1$
+	/** Lines kept above the screen. */
+	static final String PREF_SCROLLBACK = "scrollback"; //$NON-NLS-1$
+	/** block, underline or bar. */
+	static final String PREF_CURSOR_STYLE = "cursorStyle"; //$NON-NLS-1$
+	static final String PREF_CURSOR_BLINK = "cursorBlink"; //$NON-NLS-1$
+	/** Whether the Option key of macOS is Meta (Alt+B, Alt+F... in the shell) rather than for accents. */
+	static final String PREF_MAC_OPTION_IS_META = "macOptionIsMeta"; //$NON-NLS-1$
 
 	private static final Bundle BUNDLE = FrameworkUtil.getBundle(XtermPlugin.class);
 	private static IPreferenceStore preferences;
@@ -70,6 +81,12 @@ final class XtermPlugin {
 			preferences.setDefault(PREF_ECLIPSE_SHORTCUTS, EclipseShortcuts.DEFAULTS);
 			preferences.setDefault(PREF_WARN_MULTI_LINE_PASTE, true);
 			preferences.setDefault(PREF_COPY_ON_SELECT, false);
+			preferences.setDefault(PREF_FONT_FAMILY, ""); //$NON-NLS-1$
+			preferences.setDefault(PREF_FONT_SIZE, 0);
+			preferences.setDefault(PREF_SCROLLBACK, 10000);
+			preferences.setDefault(PREF_CURSOR_STYLE, "block"); //$NON-NLS-1$
+			preferences.setDefault(PREF_CURSOR_BLINK, true);
+			preferences.setDefault(PREF_MAC_OPTION_IS_META, false);
 		}
 		return preferences;
 	}

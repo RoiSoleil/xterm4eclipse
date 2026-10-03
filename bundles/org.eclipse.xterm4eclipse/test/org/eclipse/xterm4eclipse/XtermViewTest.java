@@ -580,6 +580,71 @@ class XtermViewTest {
 	}
 
 	@Test
+	void appearanceFollowsThePreferences() throws Exception {
+		XtermView view = open();
+		String defaults = options(view);
+		assertTrue(defaults.contains("\"scrollback\":10000"), defaults);
+		assertTrue(defaults.contains("\"cursorStyle\":\"block\""), defaults);
+		assertTrue(defaults.contains("\"cursorBlink\":true"), defaults);
+		assertTrue(defaults.contains("\"macOptionIsMeta\":false"), defaults);
+
+		// Changed while the terminal is open: applied at once.
+		XtermPlugin.preferences().setValue(XtermPlugin.PREF_FONT_FAMILY, "Fira Code");
+		XtermPlugin.preferences().setValue(XtermPlugin.PREF_FONT_SIZE, 15);
+		XtermPlugin.preferences().setValue(XtermPlugin.PREF_SCROLLBACK, 50);
+		XtermPlugin.preferences().setValue(XtermPlugin.PREF_CURSOR_STYLE, "underline");
+		XtermPlugin.preferences().setValue(XtermPlugin.PREF_CURSOR_BLINK, false);
+		XtermPlugin.preferences().setValue(XtermPlugin.PREF_MAC_OPTION_IS_META, true);
+		await("applied", () -> options(view).contains("\"cursorStyle\":\"underline\""));
+		String changed = options(view);
+		assertTrue(changed.contains("\"fontFamily\":\"'Fira Code', 'DejaVu Sans Mono', monospace\""), changed);
+		assertTrue(changed.contains("\"fontSize\":20"), changed);
+		assertTrue(changed.contains("\"scrollback\":50"), changed);
+		assertTrue(changed.contains("\"cursorBlink\":false"), changed);
+		assertTrue(changed.contains("\"macOptionIsMeta\":true"), changed);
+
+		// A value that is not one of the choices, or out of range, falls back to a safe one.
+		XtermPlugin.preferences().setValue(XtermPlugin.PREF_CURSOR_STYLE, "x\"});alert(1);//");
+		XtermPlugin.preferences().setValue(XtermPlugin.PREF_SCROLLBACK, -5);
+		await("fallback", () -> options(view).contains("\"cursorStyle\":\"block\""));
+		assertTrue(options(view).contains("\"scrollback\":0"));
+		XtermPlugin.preferences().setValue(XtermPlugin.PREF_FONT_SIZE, 500);
+		await("size bounded", () -> options(view).contains("\"fontSize\":96"));
+		XtermPlugin.preferences().setValue(XtermPlugin.PREF_FONT_SIZE, 15);
+		await("size back", () -> options(view).contains("\"fontSize\":20"));
+		// A font name cannot break out of its string, in JavaScript or in CSS.
+		XtermPlugin.preferences().setValue(XtermPlugin.PREF_FONT_FAMILY, "Evil'\"});alert(1);//</script>");
+		await("font cleaned", () -> options(view).contains("'Evilalert1script'"));
+		assertEquals("\"a\\\"b\\\\c\\u000a\\u003c\\u2028\"", XtermView.jsonString("a\"b\\c\n<\u2028"));
+		assertEquals("'DejaVu Sans Mono', monospace", XtermView.cssFontFamily("'\"\\"));
+
+		// Ctrl+mouse wheel zooms this terminal, and the zoom stays when the settings change.
+		zoom(view, true, -100);
+		await("zoomed in", () -> options(view).contains("\"fontSize\":21"));
+		zoom(view, true, 100);
+		zoom(view, true, 100);
+		await("zoomed out", () -> options(view).contains("\"fontSize\":19"));
+		zoom(view, false, -100);
+		pump(200);
+		assertTrue(options(view).contains("\"fontSize\":19"), "a wheel without Ctrl scrolls");
+		XtermPlugin.preferences().setValue(XtermPlugin.PREF_FONT_SIZE, 30);
+		await("zoom kept", () -> options(view).contains("\"fontSize\":39"));
+		for (int i = 0; i < 80; i++) {
+			zoom(view, true, -100);
+		}
+		await("at most 100", () -> options(view).contains("\"fontSize\":100"));
+	}
+
+	private static String options(XtermView view) {
+		return String.valueOf(view.browser.evaluate("return xtermOptions()"));
+	}
+
+	private static void zoom(XtermView view, boolean ctrl, int deltaY) {
+		view.browser.execute("document.querySelector('.xterm-screen').dispatchEvent(new WheelEvent('wheel', "
+				+ "{deltaY: " + deltaY + ", ctrlKey: " + ctrl + ", bubbles: true, cancelable: true}))");
+	}
+
+	@Test
 	void colorsFollowTheEclipseTheme() throws Exception {
 		XtermView view = open();
 		Shell parent = workbench.shells.get(0);
