@@ -50,6 +50,8 @@ final class PtySession {
 	 * not children of the shell for Windows.
 	 */
 	private volatile boolean announcesPrompts;
+	/** A bash of Windows: of Git for Windows (its launcher too), MSYS2 or Cygwin. */
+	private final boolean msysBash;
 	private volatile boolean commandEntered;
 	/** The end of the last output, where the start of an announcement may be. */
 	private String outputTail = ""; //$NON-NLS-1$
@@ -62,6 +64,8 @@ final class PtySession {
 	private static final long DRAIN_MILLIS = 500;
 
 	PtySession(String[] command, File workingDirectory, int cols, int rows, Listener listener) throws IOException {
+		String program = command.length == 0 ? "" : command[0].toLowerCase(); //$NON-NLS-1$
+		msysBash = program.endsWith("bash.exe") || program.endsWith("bash"); //$NON-NLS-1$ //$NON-NLS-2$
 		pty = new PTY(PTY.Mode.TERMINAL);
 		heldTerminal.set(MacTerminal.hold(pty.getSlaveName()));
 		pty.setTerminalSize(cols, rows);
@@ -153,10 +157,17 @@ final class PtySession {
 				String[] fields = content.substring(content.lastIndexOf(')') + 2).split(" "); //$NON-NLS-1$
 				return !fields[5].equals(fields[2]) && !fields[5].startsWith("-") && !fields[5].equals("0"); //$NON-NLS-1$ //$NON-NLS-2$
 			}
-			// Windows and macOS: the shell is busy while it has child processes, or on Windows from the
-			// Enter of a command to the next prompt when the shell announces them.
-			return (WINDOWS && announcesPrompts && commandEntered)
-					|| ProcessHandle.of(pid).map(handle -> handle.children().findAny().isPresent()).orElse(false);
+			if (WINDOWS && announcesPrompts) {
+				// From the Enter of a command to the next prompt.
+				return commandEntered;
+			}
+			if (WINDOWS && msysBash) {
+				// No meaning in its child processes: Git\bin\bash.exe starts the real bash as one, and
+				// the commands of MSYS are none.
+				return false;
+			}
+			// Elsewhere the shell is busy while it has child processes.
+			return ProcessHandle.of(pid).map(handle -> handle.children().findAny().isPresent()).orElse(false);
 		} catch (IOException | RuntimeException e) {
 			return false;
 		}
