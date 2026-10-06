@@ -59,11 +59,14 @@ import org.eclipse.swt.dnd.Transfer;
 import org.eclipse.swt.events.TraverseEvent;
 import org.eclipse.swt.graphics.FontData;
 import org.eclipse.swt.graphics.Image;
+import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.graphics.RGB;
+import org.eclipse.swt.graphics.Rectangle;
 import org.eclipse.swt.program.Program;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.Layout;
 import org.eclipse.swt.widgets.Menu;
 import org.eclipse.swt.widgets.MenuItem;
 import org.eclipse.ui.IEditorPart;
@@ -112,8 +115,8 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	private static final String MEMENTO_NAME = "name"; //$NON-NLS-1$
 	private static final String MEMENTO_CLAUDE_SESSION = "claudeSession"; //$NON-NLS-1$
 
-	/** How long the browser may stay hidden while its page loads. */
-	static int revealTimeoutMillis = 1500;
+	/** How long the browser may stay hidden while its page loads: the first WebView2 takes seconds. */
+	static int revealTimeoutMillis = 5000;
 
 	/** Shell requested by the "New Terminal" menu for the view that is about to be created. */
 	private static String nextCommandLine;
@@ -330,6 +333,10 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		// A browser is white until its page is drawn: keep it hidden behind the themed background of
 		// the view until the terminal is ready, with a deadline in case the page never says so.
 		browser.setVisible(false);
+		// Hidden is not enough on Windows: SWT shows the WebView2 of a hidden browser again each time it
+		// is resized, white until the page is drawn. So it also stays out of the view, at its full size
+		// for the terminal to have its columns and rows.
+		parent.setLayout(new BrowserLayout());
 		display.timerExec(revealTimeoutMillis, this::reveal);
 		registerFunctions();
 		// The java* functions give the page the keyboard of the shell: no other page may ever be
@@ -1433,8 +1440,26 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			return;
 		}
 		browser.setVisible(true);
+		browser.getParent().layout(true);
 		if (getSite().getPage().getActivePart() == this) {
 			setFocus();
+		}
+	}
+
+	/** The browser fills the view once revealed; until then it is beside it, where nothing shows. */
+	private final class BrowserLayout extends Layout {
+		@Override
+		protected Point computeSize(Composite composite, int wHint, int hHint, boolean flushCache) {
+			return new Point(wHint == SWT.DEFAULT ? 64 : wHint, hHint == SWT.DEFAULT ? 64 : hHint);
+		}
+
+		@Override
+		protected void layout(Composite composite, boolean flushCache) {
+			Rectangle area = composite.getClientArea();
+			if (!browser.isDisposed()) {
+				browser.setBounds(browser.getVisible() ? area
+						: new Rectangle(area.x + area.width, area.y, area.width, area.height));
+			}
 		}
 	}
 
