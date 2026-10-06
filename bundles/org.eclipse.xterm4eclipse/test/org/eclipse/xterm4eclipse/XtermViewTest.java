@@ -61,6 +61,7 @@ import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.graphics.ImageData;
 import org.eclipse.swt.graphics.RGB;
+import org.eclipse.swt.graphics.Rectangle;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Event;
 import org.eclipse.swt.widgets.Menu;
@@ -150,23 +151,32 @@ class XtermViewTest {
 	@Test
 	void browserStaysHiddenUntilTheTerminalIsDrawn() throws Exception {
 		// Far beyond the test timeout: only the page itself can reveal the browser.
+		int timeout = XtermView.revealTimeoutMillis;
 		XtermView.revealTimeoutMillis = 60000;
 		try {
 			XtermView view = new XtermView();
 			workbench.activePart = view;
 			workbench.open(view, null, null);
 			assertFalse(view.browser.getVisible(), "no white page while loading");
+			// Out of the view as well: SWT shows a hidden WebView2 again when it is resized.
+			view.browser.getParent().setSize(400, 300);
+			view.browser.getParent().layout(true);
+			Rectangle area = view.browser.getParent().getClientArea();
+			assertFalse(view.browser.getBounds().intersects(area), "out of the view: " + view.browser.getBounds());
+			assertEquals(area.width, view.browser.getBounds().width, "the columns of the view");
 			await("terminal revealed", () -> view.browser.getVisible());
+			assertEquals(area, view.browser.getBounds(), "fills the view");
 			assertNotEquals("", String.valueOf(view.browser.evaluate("return document.body.style.backgroundColor")),
 					"themed before being shown");
 			await("shell prompt", () -> screen(view).contains("$"));
 		} finally {
-			XtermView.revealTimeoutMillis = 1500;
+			XtermView.revealTimeoutMillis = timeout;
 		}
 	}
 
 	@Test
 	void browserIsRevealedAnywayWhenThePageStaysSilent() throws Exception {
+		int timeout = XtermView.revealTimeoutMillis;
 		XtermView.revealTimeoutMillis = 0;
 		try {
 			XtermView view = new XtermView();
@@ -175,7 +185,7 @@ class XtermViewTest {
 			await("revealed by the deadline", () -> view.browser.getVisible(), 1000);
 			await("shell prompt", () -> screen(view).contains("$"));
 		} finally {
-			XtermView.revealTimeoutMillis = 1500;
+			XtermView.revealTimeoutMillis = timeout;
 		}
 	}
 
