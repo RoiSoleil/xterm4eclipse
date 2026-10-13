@@ -11,6 +11,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.UnaryOperator;
 
+import org.eclipse.xterm4eclipse.spi.CommandLine;
+import org.eclipse.xterm4eclipse.spi.TerminalHost;
+import org.eclipse.xterm4eclipse.spi.TerminalIcon;
+import org.eclipse.xterm4eclipse.spi.TerminalProfile;
+
 /**
  * The shells that can be started in a terminal, similar to the terminal profiles of VS Code.
  */
@@ -23,12 +28,24 @@ final class ShellProfiles {
 		String icon() {
 			return name.equals("Git Bash") ? "icons/shells/gitbash.png" : iconOf(commandLine); //$NON-NLS-1$ //$NON-NLS-2$
 		}
+
+		/** The icon shown in the menus: of the plug-in, or of the extension that knows the program. */
+		TerminalIcon terminalIcon() {
+			return name.equals("Git Bash") ? new TerminalIcon(XtermPlugin.class, XtermPlugin.ID, icon()) //$NON-NLS-1$
+					: ShellProfiles.icon(commandLine);
+		}
 	}
 
 	/**
-	 * The icon of the shell or program a command line runs, as a resource of the plug-in: shown in the
-	 * menus and in the tab of the terminal.
+	 * The icon of the shell or program a command line runs, shown in the menus and in the tab of the
+	 * terminal: the one an extension gives to its program, else one of the plug-in.
 	 */
+	static TerminalIcon icon(String commandLine) {
+		TerminalIcon icon = TerminalExtensions.icon(commandLine);
+		return icon != null ? icon : new TerminalIcon(XtermPlugin.class, XtermPlugin.ID, iconOf(commandLine));
+	}
+
+	/** The icon of the shell a command line runs, as a resource of the plug-in. */
 	static String iconOf(String commandLine) {
 		String[] arguments = parse(commandLine);
 		String kind;
@@ -38,7 +55,7 @@ final class ShellProfiles {
 		} else {
 			String program = displayName(commandLine).toLowerCase();
 			kind = switch (program) {
-			case "bash", "zsh", "fish", "cmd", "claude" -> program; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+			case "bash", "zsh", "fish", "cmd" -> program; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 			case "pwsh", "powershell" -> "powershell"; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 			case "wsl" -> "linux"; //$NON-NLS-1$ //$NON-NLS-2$
 			default -> "shell"; //$NON-NLS-1$
@@ -48,22 +65,30 @@ final class ShellProfiles {
 	}
 
 	/** The machine the shells are looked up on; a parameter so that every platform can be tested. */
-	record Host(String os, UnaryOperator<String> environment, Path shellsFile) {
+	record Host(String os, UnaryOperator<String> environment, Path shellsFile) implements TerminalHost {
 
 		static Host current() {
 			return new Host(System.getProperty("os.name", ""), System::getenv, Path.of("/etc/shells")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 		}
 
-		boolean isWindows() {
+		@Override
+		public boolean isWindows() {
 			return os.toLowerCase().contains("win"); //$NON-NLS-1$
 		}
 
-		boolean isMac() {
+		@Override
+		public boolean isMac() {
 			return os.toLowerCase().contains("mac"); //$NON-NLS-1$
 		}
 
-		String env(String name) {
+		@Override
+		public String env(String name) {
 			return environment.apply(name);
+		}
+
+		@Override
+		public File findOnPath(String... executables) {
+			return ShellProfiles.findOnPath(this, executables);
 		}
 	}
 
@@ -107,33 +132,12 @@ final class ShellProfiles {
 				}
 			}
 		}
-		addClaude(host, profiles);
+		// The programs of the extensions, for example the coding agents, after the shells.
+		for (TerminalProfile profile : TerminalExtensions.profiles(host)) {
+			profiles.putIfAbsent(profile.name(), new Profile(profile.name(), profile.commandLine()));
+		}
 		return new ArrayList<>(profiles.values());
 	}
-
-	/**
-	 * Claude Code, when it is on the PATH: started through the login shell of the user on Unix so that
-	 * it finds the same environment (node, nvm...) as in a terminal, and the view closes when it ends.
-	 */
-	private static void addClaude(Host host, Map<String, Profile> profiles) {
-		if (host.isWindows()) {
-			File claude = findOnPath(host, "claude.exe", "claude.cmd"); //$NON-NLS-1$ //$NON-NLS-2$
-			if (claude != null) {
-				// A .cmd launcher, as installed by npm, needs cmd.exe to run.
-				profiles.put(CLAUDE, new Profile(CLAUDE, claude.getName().toLowerCase().endsWith(".cmd") //$NON-NLS-1$
-						? "cmd.exe /c " + quote(claude.getPath()) //$NON-NLS-1$
-						: quote(claude.getPath())));
-			}
-		} else if (findOnPath(host, "claude") != null) { //$NON-NLS-1$
-			String shell = host.env("SHELL"); //$NON-NLS-1$
-			if (shell == null || shell.isBlank()) {
-				shell = "/bin/bash"; //$NON-NLS-1$
-			}
-			profiles.put(CLAUDE, new Profile(CLAUDE, quote(shell) + " -l -i -c claude")); //$NON-NLS-1$
-		}
-	}
-
-	private static final String CLAUDE = "Claude"; //$NON-NLS-1$
 
 	private static File findOnPath(Host host, String... executables) {
 		for (String directory : pathEntries(host)) {
@@ -194,29 +198,7 @@ final class ShellProfiles {
 
 	/** Splits a command line on whitespace, double quotes group an argument containing spaces. */
 	static String[] parse(String commandLine) {
-		List<String> arguments = new ArrayList<>();
-		StringBuilder current = new StringBuilder();
-		boolean quoted = false;
-		boolean pending = false;
-		for (char c : commandLine.toCharArray()) {
-			if (c == '"') {
-				quoted = !quoted;
-				pending = true;
-			} else if (Character.isWhitespace(c) && !quoted) {
-				if (pending) {
-					arguments.add(current.toString());
-					current.setLength(0);
-					pending = false;
-				}
-			} else {
-				current.append(c);
-				pending = true;
-			}
-		}
-		if (pending) {
-			arguments.add(current.toString());
-		}
-		return arguments.toArray(String[]::new);
+		return CommandLine.parse(commandLine);
 	}
 
 	/** A short label for a command line: the executable name without directory or extension. */
@@ -225,7 +207,7 @@ final class ShellProfiles {
 		if (arguments.length == 0) {
 			return "Xterm"; //$NON-NLS-1$
 		}
-		// A shell running a single program, such as Claude Code, is named after the program.
+		// A shell running a single program, such as a coding agent, is named after the program.
 		for (int i = 1; i < arguments.length - 1; i++) {
 			if (arguments[i].equals("-c") || arguments[i].equalsIgnoreCase("/c")) { //$NON-NLS-1$ //$NON-NLS-2$
 				String program = arguments[i + 1].trim();
@@ -245,7 +227,7 @@ final class ShellProfiles {
 
 	/**
 	 * @return {@code true} if the command line starts an interactive shell, {@code false} if it runs a
-	 *         program of its own such as Claude Code (directly or through {@code shell -c})
+	 *         program of its own such as a coding agent (directly or through {@code shell -c})
 	 */
 	static boolean isShell(String commandLine) {
 		return SHELLS.contains(displayName(commandLine).toLowerCase());
@@ -298,6 +280,6 @@ final class ShellProfiles {
 	}
 
 	private static String quote(String path) {
-		return path.indexOf(' ') >= 0 ? '"' + path + '"' : path;
+		return CommandLine.quote(path);
 	}
 }

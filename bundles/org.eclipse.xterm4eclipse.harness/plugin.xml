@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+   <extension point="org.eclipse.xterm4eclipse.terminalExtensions">
+      <terminalExtension class="org.eclipse.xterm4eclipse.harness.HarnessExtension"/>
+   </extension>
+   <extension point="org.eclipse.ui.preferencePages">
+      <page
+            id="org.eclipse.xterm4eclipse.harness.preferences"
+            name="Coding Agents"
+            category="org.eclipse.xterm4eclipse.preferences"
+            class="org.eclipse.xterm4eclipse.harness.HarnessPreferencePage"/>
+   </extension>
+</plugin>

@@ -7,6 +7,7 @@ Bundle-Vendor: RoiSoleil
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Bundle-ActivationPolicy: lazy
 Automatic-Module-Name: org.eclipse.xterm4eclipse
+Export-Package: org.eclipse.xterm4eclipse.spi
 Require-Bundle: org.eclipse.ui,
  org.eclipse.core.runtime,
  org.eclipse.core.expressions,

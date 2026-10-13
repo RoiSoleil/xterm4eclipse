@@ -1,0 +1,65 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- Schema file written by PDE -->
+<schema targetNamespace="org.eclipse.xterm4eclipse" xmlns="http://www.w3.org/2001/XMLSchema">
+<annotation>
+      <appInfo>
+         <meta.schema plugin="org.eclipse.xterm4eclipse" id="terminalExtensions" name="Terminal Extensions"/>
+      </appInfo>
+      <documentation>
+         What another plug-in adds to the terminals of Xterm4Eclipse: programs offered in the menus with the shells, their icons, and what it does in a terminal that runs one of them (for example a coding agent that goes on with its conversation when Eclipse reopens the terminal).
+      </documentation>
+   </annotation>
+
+   <element name="extension">
+      <annotation>
+         <appInfo>
+            <meta.element />
+         </appInfo>
+      </annotation>
+      <complexType>
+         <sequence>
+            <element ref="terminalExtension" minOccurs="1" maxOccurs="unbounded"/>
+         </sequence>
+         <attribute name="point" type="string" use="required">
+         </attribute>
+         <attribute name="id" type="string">
+         </attribute>
+         <attribute name="name" type="string">
+            <annotation>
+               <appInfo>
+                  <meta.attribute translatable="true"/>
+               </appInfo>
+            </annotation>
+         </attribute>
+      </complexType>
+   </element>
+
+   <element name="terminalExtension">
+      <complexType>
+         <attribute name="class" type="string" use="required">
+            <annotation>
+               <documentation>
+                  The extension, created once and used by every terminal.
+               </documentation>
+               <appInfo>
+                  <meta.attribute kind="java" basedOn=":org.eclipse.xterm4eclipse.spi.TerminalExtension"/>
+               </appInfo>
+            </annotation>
+         </attribute>
+      </complexType>
+   </element>
+
+   <annotation>
+      <appInfo>
+         <meta.section type="examples"/>
+      </appInfo>
+      <documentation>
+         &lt;pre&gt;
+&lt;extension point=&quot;org.eclipse.xterm4eclipse.terminalExtensions&quot;&gt;
+   &lt;terminalExtension class=&quot;org.eclipse.xterm4eclipse.harness.HarnessExtension&quot;/&gt;
+&lt;/extension&gt;
+&lt;/pre&gt;
+      </documentation>
+   </annotation>
+
+</schema>

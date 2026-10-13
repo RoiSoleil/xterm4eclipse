@@ -11,10 +11,10 @@ import org.eclipse.core.runtime.Platform;
 import org.eclipse.core.runtime.preferences.InstanceScope;
 import org.eclipse.jface.preference.IPreferenceStore;
 import org.eclipse.jface.preference.PreferenceStore;
-import org.eclipse.jface.resource.ImageDescriptor;
 import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.preferences.ScopedPreferenceStore;
+import org.eclipse.xterm4eclipse.spi.TerminalIcon;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.FrameworkUtil;
 
@@ -52,8 +52,6 @@ final class XtermPlugin {
 	static final String PREF_MAC_OPTION_IS_META = "macOptionIsMeta"; //$NON-NLS-1$
 	/** Environment variables of the shells, see {@link ShellEnvironment}. */
 	static final String PREF_ENVIRONMENT = "environment"; //$NON-NLS-1$
-	/** New terminals of Claude Code offer to add the MCP server of Eclipse when it runs. */
-	static final String PREF_OFFER_ECLIPSE_MCP = "offerEclipseMcp"; //$NON-NLS-1$
 
 	private static final Bundle BUNDLE = FrameworkUtil.getBundle(XtermPlugin.class);
 	private static IPreferenceStore preferences;
@@ -69,6 +67,11 @@ final class XtermPlugin {
 		}
 		return Path.of(System.getProperty("xterm4eclipse.state", //$NON-NLS-1$
 				System.getProperty("java.io.tmpdir") + "/xterm4eclipse")); //$NON-NLS-1$ //$NON-NLS-2$
+	}
+
+	/** @return {@code false} outside of Eclipse (tests), where there is no registry of extensions */
+	static boolean inEclipse() {
+		return BUNDLE != null;
 	}
 
 	static String version() {
@@ -92,7 +95,6 @@ final class XtermPlugin {
 			preferences.setDefault(PREF_CURSOR_BLINK, true);
 			preferences.setDefault(PREF_MAC_OPTION_IS_META, false);
 			preferences.setDefault(PREF_ENVIRONMENT, ""); //$NON-NLS-1$
-			preferences.setDefault(PREF_OFFER_ECLIPSE_MCP, true);
 		}
 		return preferences;
 	}
@@ -134,11 +136,16 @@ final class XtermPlugin {
 	 * thread; the image is shared and disposed with the display.
 	 */
 	static Image image(String path) {
-		Image image = IMAGES.get(path);
+		return image(new TerminalIcon(XtermPlugin.class, ID, path));
+	}
+
+	/** An image of this plug-in or of an extension, shared and disposed with the display. */
+	static Image image(TerminalIcon icon) {
+		Image image = IMAGES.get(icon.uri());
 		if (image == null || image.isDisposed()) {
-			Image created = ImageDescriptor.createFromFile(XtermPlugin.class, '/' + path).createImage();
+			Image created = icon.descriptor().createImage();
 			Display.getCurrent().disposeExec(created::dispose);
-			IMAGES.put(path, created);
+			IMAGES.put(icon.uri(), created);
 			image = created;
 		}
 		return image;

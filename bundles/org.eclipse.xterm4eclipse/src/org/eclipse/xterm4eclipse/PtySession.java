@@ -64,6 +64,15 @@ final class PtySession {
 	private static final long DRAIN_MILLIS = 500;
 
 	PtySession(String[] command, File workingDirectory, int cols, int rows, Listener listener) throws IOException {
+		this(command, workingDirectory, cols, rows, listener, Map.of());
+	}
+
+	/**
+	 * @param variables
+	 *            added to the environment of the program by an extension of the terminal
+	 */
+	PtySession(String[] command, File workingDirectory, int cols, int rows, Listener listener,
+			Map<String, String> variables) throws IOException {
 		String program = command.length == 0 ? "" : command[0].toLowerCase(); //$NON-NLS-1$
 		msysBash = program.endsWith("bash.exe") || program.endsWith("bash"); //$NON-NLS-1$ //$NON-NLS-2$
 		pty = new PTY(PTY.Mode.TERMINAL);
@@ -71,7 +80,7 @@ final class PtySession {
 		pty.setTerminalSize(cols, rows);
 		try {
 			process = ProcessFactory.getFactory().exec(command(command, System.getProperty("os.name", "")), //$NON-NLS-1$ //$NON-NLS-2$
-					environment(command), workingDirectory, pty);
+					with(environment(command), variables), workingDirectory, pty);
 		} catch (IOException | RuntimeException e) {
 			releaseTerminal();
 			throw e;
@@ -324,6 +333,22 @@ final class PtySession {
 	static String[] environment(String[] command) {
 		return environment(command, System.getProperty("os.name", ""), System.getenv(), //$NON-NLS-1$ //$NON-NLS-2$
 				XtermPlugin.preference(XtermPlugin.PREF_ENVIRONMENT));
+	}
+
+	/** @return the environment with other variables, which replace those of the same name */
+	static String[] with(String[] environment, Map<String, String> variables) {
+		if (variables.isEmpty()) {
+			return environment;
+		}
+		List<String> result = new ArrayList<>();
+		for (String variable : environment) {
+			int equals = variable.indexOf('=', 1);
+			if (equals < 0 || !variables.containsKey(variable.substring(0, equals))) {
+				result.add(variable);
+			}
+		}
+		variables.forEach((name, value) -> result.add(name + '=' + value));
+		return result.toArray(String[]::new);
 	}
 
 	static String[] environment(String[] command, String os, Map<String, String> inherited) {

@@ -3,5 +3,9 @@
    <feature id="org.eclipse.xterm4eclipse.feature">
       <category name="org.eclipse.xterm4eclipse"/>
    </feature>
+   <!-- Optional: what the terminals know about the coding agents (Claude Code, Codex, OpenCode...). -->
+   <feature id="org.eclipse.xterm4eclipse.harness.feature">
+      <category name="org.eclipse.xterm4eclipse"/>
+   </feature>
    <category-def name="org.eclipse.xterm4eclipse" label="Xterm4Eclipse"/>
 </site>

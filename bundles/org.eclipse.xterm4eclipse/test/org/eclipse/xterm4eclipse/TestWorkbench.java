@@ -36,18 +36,18 @@ import org.eclipse.ui.themes.IThemeManager;
 
 /**
  * The slice of the Eclipse workbench an {@link XtermView} talks to, backed by fakes, plus a real SWT
- * shell to host the view.
+ * shell to host the view. Public for the tests of the plug-ins that extend the terminal.
  */
-final class TestWorkbench {
+public final class TestWorkbench {
 
-	static final Display DISPLAY = new Display();
+	public static final Display DISPLAY = new Display();
 
-	static final boolean MAC = System.getProperty("os.name").startsWith("Mac");
-	static final boolean LINUX = System.getProperty("os.name").startsWith("Linux");
-	static final boolean WINDOWS = System.getProperty("os.name").startsWith("Windows");
+	public static final boolean MAC = System.getProperty("os.name").startsWith("Mac");
+	public static final boolean LINUX = System.getProperty("os.name").startsWith("Linux");
+	public static final boolean WINDOWS = System.getProperty("os.name").startsWith("Windows");
 	/** Two folders that exist on every system, canonical: as the shell sees them. */
-	static final File FOLDER = folder("xt-a");
-	static final File OTHER_FOLDER = folder("xt-b");
+	public static final File FOLDER = folder("xt-a");
+	public static final File OTHER_FOLDER = folder("xt-b");
 	/** The modifier of the Eclipse shortcuts (M1): Command on macOS, Ctrl elsewhere. */
 	static final String M1 = MAC ? "COMMAND" : "CTRL";
 	/** The event property of that modifier in the page. */
@@ -56,8 +56,8 @@ final class TestWorkbench {
 	 * The bash of the tests, at least 4.4 for bracketed paste (/bin/bash of macOS is 3.2): test.sh
 	 * gives the one of the PATH.
 	 */
-	static final String BASH = System.getProperty("xterm4eclipse.test.bash", "/bin/bash");
-	static final String SHELL = '"' + BASH + "\" --norc --noprofile";
+	public static final String BASH = System.getProperty("xterm4eclipse.test.bash", "/bin/bash");
+	public static final String SHELL = '"' + BASH + "\" --norc --noprofile";
 
 	private static File folder(String prefix) {
 		try {
@@ -73,7 +73,7 @@ final class TestWorkbench {
 	}
 
 	/** The path of the file as the bash of the tests prints it: /c/Users/me for C:\Users\me in Git Bash. */
-	static String shellPath(File file) {
+	public static String shellPath(File file) {
 		String path = file.getPath();
 		if (WINDOWS && path.matches("[A-Za-z]:\\\\.*")) {
 			return "/" + Character.toLowerCase(path.charAt(0)) + path.substring(2).replace('\\', '/');
@@ -82,11 +82,11 @@ final class TestWorkbench {
 	}
 
 	/** A command line that runs the script with the bash of the tests. */
-	static String bashScript(String script) {
+	public static String bashScript(String script) {
 		return '"' + BASH + "\" -c \"" + script + '"';
 	}
 
-	final Fake page = new Fake();
+	public final Fake page = new Fake();
 	/** The page of every view, the same object each time as in Eclipse. */
 	final IWorkbenchPage workbenchPage = page.as(IWorkbenchPage.class);
 	final Fake bindings = new Fake();
@@ -118,7 +118,7 @@ final class TestWorkbench {
 	/** The workbench of the running test, whose terminals a timeout shows. */
 	private static TestWorkbench current;
 
-	TestWorkbench() {
+	public TestWorkbench() {
 		current = this;
 		page.on("addPartListener", args -> partListeners.add((IPartListener2) args[0]));
 		page.on("removePartListener", args -> partListeners.remove(args[0]));
@@ -178,7 +178,7 @@ final class TestWorkbench {
 	}
 
 	/** Creates a view the way the workbench does, in its own window. */
-	XtermView open(XtermView view, String secondaryId, IMemento memento) throws Exception {
+	public XtermView open(XtermView view, String secondaryId, IMemento memento) throws Exception {
 		view.init(site(secondaryId), memento);
 		Shell shell = new Shell(DISPLAY);
 		shell.setLayout(new FillLayout());
@@ -190,11 +190,55 @@ final class TestWorkbench {
 		return view;
 	}
 
+	/**
+	 * Opens a terminal as the user does from a menu: for this command line, in this directory.
+	 *
+	 * @return the view, once created
+	 */
+	public XtermView openByUser(String commandLine, File directory) throws Exception {
+		XtermView[] opened = new XtermView[1];
+		page.on("showView", args -> {
+			try {
+				opened[0] = open(new XtermView(), (String) args[1], null);
+			} catch (Exception e) {
+				throw new AssertionError(e);
+			}
+			return opened[0];
+		});
+		XtermView.open(workbenchPage, commandLine, directory);
+		return opened[0];
+	}
+
+	/** Starts the program of the terminal again, as "Restart" of its menu does. */
+	public static void restart(XtermView view) {
+		view.restart();
+	}
+
+	/** The command line of new terminals, as the user chooses it; empty for the shell of the system. */
+	public static void setDefaultCommandLine(String commandLine) {
+		ShellProfiles.setDefaultCommandLine(commandLine);
+	}
+
+	/** @return the names of the shells and programs that the menus offer on this machine, with this PATH */
+	public static java.util.Map<String, String> profiles(String os, java.util.Map<String, String> environment) {
+		java.util.Map<String, String> profiles = new java.util.LinkedHashMap<>();
+		for (ShellProfiles.Profile profile : ShellProfiles
+				.detect(new ShellProfiles.Host(os, environment::get, Path.of("/nonexistent/shells")))) {
+			profiles.put(profile.name(), profile.commandLine());
+		}
+		return profiles;
+	}
+
+	/** @return the icon of the tab of a terminal for this command line, as the model of the workbench names it */
+	public static String iconUri(String commandLine) {
+		return ShellProfiles.icon(commandLine).uri();
+	}
+
 	IWorkbenchPartReference reference(XtermView view) {
 		return new Fake().on("getPart", args -> view).as(IWorkbenchPartReference.class);
 	}
 
-	void close() {
+	public void close() {
 		for (XtermView view : views) {
 			view.dispose();
 		}
@@ -207,7 +251,7 @@ final class TestWorkbench {
 		pump(100);
 	}
 
-	static String screen(XtermView view) {
+	public static String screen(XtermView view) {
 		Object text = view.browser.evaluate("return Array.from(document.querySelectorAll('.xterm-rows > div'))"
 				+ ".map(function (row) { return row.textContent; }).join('\\n')");
 		return text == null ? "" : text.toString();
@@ -217,7 +261,7 @@ final class TestWorkbench {
 	 * The whole text of the terminal, the scrollback included: on Windows the pseudo console clears
 	 * the screen when a shell starts.
 	 */
-	static String text(XtermView view) {
+	public static String text(XtermView view) {
 		Object serialized = view.browser.evaluate("return window.xtermSerialize ? xtermSerialize() : ''");
 		String text = serialized == null ? "" : serialized.toString();
 		// Gaps are cursor moves; then no other control sequence.
@@ -228,16 +272,16 @@ final class TestWorkbench {
 		return text.replace("\r\n", "\n").replace("\r", "");
 	}
 
-	static void type(XtermView view, String text) {
+	public static void type(XtermView view, String text) {
 		view.browser.execute("javaInput('" + text.replace("\\", "\\\\").replace("'", "\\'").replace("\r", "\\r") + "')");
 	}
 
 	/** Runs the event loop until the condition holds. */
-	static void await(String what, BooleanSupplier condition) {
+	public static void await(String what, BooleanSupplier condition) {
 		await(what, condition, 15000);
 	}
 
-	static void await(String what, BooleanSupplier condition, long millis) {
+	public static void await(String what, BooleanSupplier condition, long millis) {
 		long deadline = System.currentTimeMillis() + millis;
 		while (!condition.getAsBoolean()) {
 			if (System.currentTimeMillis() > deadline) {
@@ -255,7 +299,7 @@ final class TestWorkbench {
 		}
 	}
 
-	static void pump(long millis) {
+	public static void pump(long millis) {
 		long end = System.currentTimeMillis() + millis;
 		do {
 			if (!DISPLAY.readAndDispatch()) {

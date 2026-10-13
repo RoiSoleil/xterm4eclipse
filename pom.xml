@@ -11,7 +11,9 @@
 	<packaging>pom</packaging>
 	<modules>
 		<module>bundles/org.eclipse.xterm4eclipse</module>
+		<module>bundles/org.eclipse.xterm4eclipse.harness</module>
 		<module>features/org.eclipse.xterm4eclipse</module>
+		<module>features/org.eclipse.xterm4eclipse.harness</module>
 		<module>update-site/org.eclipse.xterm4eclipse</module>
 	</modules>
 </project>
