@@ -24,8 +24,8 @@ import org.eclipse.osgi.service.datalocation.Location;
  */
 final class EclipseMcp {
 
-	/** The name of the server in Claude Code, as in the documentation of the server. */
-	static final String NAME = "eclipse"; //$NON-NLS-1$
+	/** The name of the server in Claude Code: it tells who added it. Claude Code allows no space in it. */
+	static final String NAME = "eclipse-mcp-server-via-xterm4eclipse"; //$NON-NLS-1$
 	/** Where the server tells how to reach it, in the folder of the workspace. */
 	static final String ENDPOINT_FILE = ".metadata/.plugins/com.vogella.eclipse.mcp.server/endpoint.json"; //$NON-NLS-1$
 	/** Only a server of this computer: the address and the token go into a command line. */

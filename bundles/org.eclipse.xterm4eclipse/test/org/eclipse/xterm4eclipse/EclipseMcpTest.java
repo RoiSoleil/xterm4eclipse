@@ -108,16 +108,16 @@ class EclipseMcpTest {
 	void theSameClaudeCodeAddsTheServer() {
 		EclipseMcp.Endpoint endpoint = new EclipseMcp.Endpoint("http://127.0.0.1:8642/mcp", TOKEN);
 		String[] add = EclipseMcp.addArguments(endpoint);
-		assertArrayEquals(new String[] {"add", "--transport", "http", "--scope", "user", "eclipse", "http://127.0.0.1:8642/mcp",
+		assertArrayEquals(new String[] {"add", "--transport", "http", "--scope", "user", "eclipse-mcp-server-via-xterm4eclipse", "http://127.0.0.1:8642/mcp",
 				"--header", "Authorization: Bearer " + TOKEN}, add);
-		assertArrayEquals(new String[] {"/usr/bin/claude", "mcp", "add", "--transport", "http", "--scope", "user", "eclipse",
+		assertArrayEquals(new String[] {"/usr/bin/claude", "mcp", "add", "--transport", "http", "--scope", "user", "eclipse-mcp-server-via-xterm4eclipse",
 				"http://127.0.0.1:8642/mcp", "--header", "Authorization: Bearer " + TOKEN},
 				EclipseMcp.mcpCommand(new String[] {"/usr/bin/claude", "--model", "opus"}, add));
-		assertArrayEquals(new String[] {"cmd.exe", "/c", "C:\\npm\\claude.cmd", "mcp", "remove", "eclipse"},
-				EclipseMcp.mcpCommand(new String[] {"cmd.exe", "/c", "C:\\npm\\claude.cmd", "--resume", "x"}, "remove", "eclipse"));
+		assertArrayEquals(new String[] {"cmd.exe", "/c", "C:\\npm\\claude.cmd", "mcp", "remove", "eclipse-mcp-server-via-xterm4eclipse"},
+				EclipseMcp.mcpCommand(new String[] {"cmd.exe", "/c", "C:\\npm\\claude.cmd", "--resume", "x"}, "remove", "eclipse-mcp-server-via-xterm4eclipse"));
 		// Through the login shell of the user, every argument quoted.
 		assertArrayEquals(new String[] {"/bin/zsh", "-l", "-i", "-c",
-				"claude 'mcp' 'add' '--transport' 'http' '--scope' 'user' 'eclipse' 'http://127.0.0.1:8642/mcp' '--header' "
+				"claude 'mcp' 'add' '--transport' 'http' '--scope' 'user' 'eclipse-mcp-server-via-xterm4eclipse' 'http://127.0.0.1:8642/mcp' '--header' "
 						+ "'Authorization: Bearer " + TOKEN + "'"},
 				EclipseMcp.mcpCommand(new String[] {"/bin/zsh", "-l", "-i", "-c", "claude --session-id x"}, add));
 		assertArrayEquals(new String[] {"bash", "-c", "'/my dir/claude' 'mcp' 'list'"},

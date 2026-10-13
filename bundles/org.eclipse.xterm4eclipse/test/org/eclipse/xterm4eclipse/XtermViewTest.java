@@ -493,11 +493,11 @@ class XtermViewTest {
 			await("added and started", () -> screen(opened.get(0)).contains("args: --session-id"));
 			assertEquals(List.of(url), asked);
 			assertTrue(text(opened.get(0)).contains("[Claude Code can now use Eclipse.]"));
-			String add = "mcp add --transport http --scope user eclipse " + url + " --header";
+			String add = "mcp add --transport http --scope user eclipse-mcp-server-via-xterm4eclipse " + url + " --header";
 			List<String> calls = Files.readAllLines(log).stream().map(String::strip).toList();
 			assertEquals(3, calls.size(), calls.toString());
 			assertTrue(calls.get(0).startsWith(add) && calls.get(0).contains("Bearer " + token), calls.get(0));
-			assertEquals("mcp remove --scope user eclipse", calls.get(1));
+			assertEquals("mcp remove --scope user eclipse-mcp-server-via-xterm4eclipse", calls.get(1));
 			assertTrue(calls.get(2).startsWith(add), calls.get(2));
 
 			// Known by Claude Code: not asked again.
