@@ -17,6 +17,11 @@ You can find the latest build of Xterm4Eclipse here:
 
 https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
 
+It holds two features: **Xterm4Eclipse**, the terminal, and **Xterm4Eclipse Coding Agents
+(optional)**, what the terminal knows about [the coding agents](#coding-agents-optional) (Claude Code,
+Codex, OpenCode, Reasonix...). The terminal works without the second one: leave it unchecked if you do
+not want it.
+
 # Features
 
 - xterm.js rendering in the colors and font of the Eclipse theme.
@@ -28,20 +33,11 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
   editor.
 - Toolbar button and Ctrl+Alt+Shift+X to open a terminal.
 - The tab shows the icon of the shell or program it runs (bash, zsh, fish, PowerShell, cmd, Git Bash,
-  WSL, Claude Code), with a badge for a running command (orange dot) and for a finished command or a
-  program asking for attention through the bell or an OSC 9 / OSC 777 notification (green dot).
+  WSL), with a badge for a running command (orange dot) and for a finished command or a program
+  asking for attention through the bell or an OSC 9 / OSC 777 notification (green dot).
 - The tab shows as busy while a program reports its progress (OSC 9;4, as on the tabs of Windows
   Terminal).
 - After a restart of Eclipse each terminal reopens with the same shell, directory and screen content.
-- A terminal running Claude Code starts it with its own session id: when Eclipse reopens the
-  terminal, Claude Code resumes that conversation (`--resume`), even with several terminals of
-  Claude Code in the same folder. A Claude Code that ends with an error resumes it too on Enter;
-  *Restart* starts a new conversation.
-- When the [MCP server of Eclipse](https://github.com/vogellacompany/eclipse-mcp-server) runs, a new
-  terminal of Claude Code that does not know it yet offers to add it as
-  `eclipse-mcp-server-via-xterm4eclipse` (`claude mcp add --scope user`, with the token of the server),
-  before Claude Code starts so that it uses it at once:
-  *Add*, *Not Now* (until Eclipse restarts) or *Never Ask* (also in the preferences).
 - `exit` closes the view. A program run on its own (Claude Code...) that fails, or a shell that cannot
   start, keeps its view open with its last output: Enter starts it again. *Restart* in the view menu
   starts a fresh shell in the directory of the current one.
@@ -78,7 +74,7 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
   removed, so that a copied text cannot run a command by itself.
 - Security: the browser of the terminal can only show its own page; only http and https links are
   opened, and a file path is always opened in an Eclipse editor (the text editor when its default
-  editor is a program of the system), never run. Shells and Claude Code are only looked up in the
+  editor is a program of the system), never run. Shells and coding agents are only looked up in the
   absolute directories of the PATH.
 - Font and size of the terminal (by default those of the text font of Eclipse), lines kept above the
   screen, cursor style and blinking, Option as Meta on macOS. Ctrl+mouse wheel (Cmd on macOS) zooms
@@ -87,6 +83,54 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
   `${OTHER}` for the value of another variable, for example `PATH=/opt/tools/bin:${PATH}`) or `-NAME`
   to remove one.
 - Preferences in *Window > Preferences > Xterm Terminal*.
+
+# Coding agents (optional)
+
+The feature *Xterm4Eclipse Coding Agents* (plug-in `org.eclipse.xterm4eclipse.harness`) holds all
+that the terminal knows about the coding agents ("harnesses"). Without it the terminal runs them as
+any other program.
+
+- An agent that is on the PATH has its entry in the menus of the shells (the **+** button, *Show in
+  Xterm*), started through the login shell of the user on Unix so that it finds the same environment
+  (node, nvm...) as in a terminal; and its icon, in the menus and in the tab of its terminal.
+- When Eclipse reopens a terminal, its agent comes back to its conversation. An agent that ends with
+  an error comes back to it too on Enter; *Restart* starts a new conversation. An agent that cannot
+  resume and fails at once starts a new conversation on the next Enter.
+- When the [MCP server of Eclipse](https://github.com/vogellacompany/eclipse-mcp-server) runs, a new
+  terminal of an agent that does not know it yet offers to add it as
+  `eclipse-mcp-server-via-xterm4eclipse`, for the user and with the token of the server, before the
+  agent starts so that it uses it at once: *Add*, *Not Now* (until Eclipse restarts) or *Never Ask*
+  (also in *Window > Preferences > Xterm Terminal > Coding Agents*). The agent adds the server
+  itself, with its own command.
+- A command line that chooses its conversation itself (`claude --continue`, `codex resume`...), or
+  that runs another command of the agent (`codex exec`...), is run as it is.
+
+| Agent | Program | Conversation of a reopened terminal | MCP server of Eclipse |
+|---|---|---|---|
+| Claude Code | `claude` | its own: started with `--session-id`, resumed with `--resume` | `claude mcp add --scope user` |
+| Codex | `codex` | the last one of the folder: `codex resume --last` | `codex mcp add`; the token is in the environment of the terminals (`XTERM4ECLIPSE_MCP_TOKEN`) |
+| OpenCode | `opencode` | its own, found in `opencode session list` after the first message and resumed with `--session`; else the last one (`--continue`) | `opencode mcp add --global` |
+| Reasonix (DeepSeek) | `reasonix` | the last one of the folder: `--continue` | `reasonix mcp add` |
+| Gemini CLI | `gemini` | its own: `--session-id`, resumed with `--resume` | `gemini mcp add -s user` |
+| GitHub Copilot CLI | `copilot` | its own: `--session-id` | `copilot mcp add` |
+| Cursor Agent | `cursor-agent` | the last one: `--continue` | - |
+| Qwen Code | `qwen` | its own: `--session-id`, resumed with `--resume` | `qwen mcp add -s user` |
+| Kilo Code | `kilo`, `kilocode` | the last one of the folder: `--continue` | `kilo mcp add` |
+| Crush | `crush` | the last one of the folder: `--continue` | - |
+| Amp | `amp` | - (its threads are kept on its server) | `amp mcp add` |
+| goose | `goose` | its own: `goose session --name`, resumed with `--resume` | - |
+| Aider | `aider` | the history of the folder: `--restore-chat-history` | - |
+
+"Its own" is the conversation of that very terminal, also with several terminals of the agent in the
+same folder. The agents that choose their ids themselves can only be asked for the last conversation
+of the folder, which is done once the user has talked to the agent in the terminal. The command
+lines are those of the versions of October 2026 (Claude Code 2.1, Codex 0.162, OpenCode 2.0,
+Reasonix 2.37, Gemini CLI 0.63, Copilot CLI 1.0, Qwen Code 0.25, Kilo Code 7.8, Crush 0.98,
+goose 1.54).
+
+Another plug-in can teach the terminal other programs through the extension point
+`org.eclipse.xterm4eclipse.terminalExtensions` (package `org.eclipse.xterm4eclipse.spi`): entries in
+the menus, icons, and a say in how its program starts in a terminal and comes back.
 
 # Build
 
@@ -97,6 +141,10 @@ distributions does not work with Tycho).
 mvn clean install   # update site in update-site/org.eclipse.xterm4eclipse/target/repository
 ```
 
+The terminal is the plug-in `bundles/org.eclipse.xterm4eclipse`; the coding agents are in
+`bundles/org.eclipse.xterm4eclipse.harness`, which only depends on the first one, with a feature of
+its own.
+
 Every push to `main` is built by GitHub Actions, which publishes the update site to the
 `update-site` branch and a zipped copy to the `latest` release.
 
@@ -105,9 +153,13 @@ later) and need bash:
 
 ```bash
 export ECLIPSE_HOME=/path/to/eclipse   # macOS: /Applications/Eclipse.app/Contents/Eclipse
-./build.sh --install   # quick build, copied to $ECLIPSE_HOME/dropins
+./build.sh --install   # quick build, copied to $ECLIPSE_HOME/dropins (--no-harness: without the coding agents)
 ./test.sh              # tests with coverage (fails under 85 % of lines)
 ```
+
+`test.sh` tests the terminal without the plug-in of the coding agents first, then the agents, each
+with a stand-in for its program (`TESTS=terminal` or `TESTS=harness` for one of them only). The icons
+of the agents are drawn by `java tools/MakeHarnessIcons.java bundles/org.eclipse.xterm4eclipse.harness/icons`.
 
 xterm.js and its addons are copied to `bundles/org.eclipse.xterm4eclipse/web` from the npm packages
 of the versions in `xterm/package-lock.json`, checked against their integrity hashes (the build fails

@@ -10,8 +10,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.UUID;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -85,6 +87,8 @@ import org.eclipse.ui.handlers.IHandlerService;
 import org.eclipse.ui.keys.IBindingService;
 import org.eclipse.ui.part.ViewPart;
 import org.eclipse.ui.progress.IWorkbenchSiteProgressService;
+import org.eclipse.xterm4eclipse.spi.Terminal;
+import org.eclipse.xterm4eclipse.spi.TerminalCompanion;
 
 /**
  * A terminal view rendered by xterm.js (the terminal emulator used by VS Code) inside an SWT
@@ -113,7 +117,8 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	private static final String MEMENTO_SHELL = "shell"; //$NON-NLS-1$
 	private static final String MEMENTO_DIRECTORY = "directory"; //$NON-NLS-1$
 	private static final String MEMENTO_NAME = "name"; //$NON-NLS-1$
-	private static final String MEMENTO_CLAUDE_SESSION = "claudeSession"; //$NON-NLS-1$
+	/** The values of the view itself in its memento: the others are those of the extensions. */
+	private static final Set<String> MEMENTO_KEYS = Set.of(MEMENTO_SHELL, MEMENTO_DIRECTORY, MEMENTO_NAME);
 
 	/** How long the browser may stay hidden while its page loads: the first WebView2 takes seconds. */
 	static int revealTimeoutMillis = 5000;
@@ -183,14 +188,17 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	/** Screen content saved before the last Eclipse shutdown, replayed once when the view opens. */
 	private byte[] restoredContent;
 	private File workingDirectory;
-	/** Opened by the user, not restored by Eclipse: a new Claude Code may offer the MCP server of Eclipse. */
+	/** Opened by the user, not restored by Eclipse: an extension may ask something before its program starts. */
 	private boolean openedByUser;
-	/** The user answered "Not Now": not asked again until Eclipse restarts. */
-	static boolean mcpPostponed;
-	/** The conversation of Claude Code in this terminal, if it runs Claude Code. */
-	private String claudeSession;
-	/** The next start of Claude Code resumes its conversation. */
-	private boolean resumeClaude;
+	/** What the extensions keep with the terminal, for example the conversation of a coding agent. */
+	private final Map<String, String> extensionState = new LinkedHashMap<>();
+	/** What the extension that knows the program of the terminal does in it, if there is one. */
+	private TerminalCompanion companion;
+	private boolean companionLooked;
+	/** The next start of the program is its return: after a restart of Eclipse, or after it failed. */
+	private boolean resumeProgram;
+	/** An extension has shown a message since the program was asked to start. */
+	private boolean printedBeforeStart;
 	/** Directory announced by the shell itself through an escape sequence, if it does so. */
 	private File reportedDirectory;
 	/** Text to run once the shell has started. */
@@ -256,12 +264,14 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		}
 		if (memento != null && !requested) {
 			customName = memento.getString(MEMENTO_NAME);
-			// Checked: it goes into the command line, which a shell may run.
-			String claude = memento.getString(MEMENTO_CLAUDE_SESSION);
-			if (ClaudeSessions.isId(claude)) {
-				claudeSession = claude;
-				resumeClaude = true;
+			// What the extensions kept, which they check: it may go into a command line.
+			for (String key : memento.getAttributeKeys()) {
+				String value = memento.getString(key);
+				if (!MEMENTO_KEYS.contains(key) && value != null) {
+					extensionState.put(key, value);
+				}
 			}
+			resumeProgram = true;
 			String directory = memento.getString(MEMENTO_DIRECTORY);
 			if (directory != null && new File(directory).isDirectory()) {
 				workingDirectory = new File(directory);
@@ -283,9 +293,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		if (customName != null) {
 			memento.putString(MEMENTO_NAME, customName);
 		}
-		if (claudeSession != null) {
-			memento.putString(MEMENTO_CLAUDE_SESSION, claudeSession);
-		}
+		extensionState.forEach(memento::putString);
 		File directory = session != null ? session.currentDirectory() : null;
 		if (directory == null) {
 			directory = reportedDirectory != null ? reportedDirectory : workingDirectory;
@@ -374,9 +382,9 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		}
 
 		createActions();
-		// The tab shows the icon of the shell or program (bash, PowerShell, Claude Code...), with a badge
-		// for what it does.
-		ImageDescriptor shellIcon = ImageDescriptor.createFromFile(XtermView.class, '/' + ShellProfiles.iconOf(commandLine));
+		// The tab shows the icon of the shell or program (bash, PowerShell, a coding agent...), with a
+		// badge for what it does.
+		ImageDescriptor shellIcon = ShellProfiles.icon(commandLine).descriptor();
 		for (Activity value : Activity.values()) {
 			ImageDescriptor icon = value.overlay == null ? shellIcon
 					: new DecorationOverlayIcon(shellIcon,
@@ -988,7 +996,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 				MenuItem item = new MenuItem(menu, SWT.PUSH);
 				item.setText(profile.commandLine().equals(defaultCommandLine) ? profile.name() + " (default)" //$NON-NLS-1$
 						: profile.name());
-				item.setImage(XtermPlugin.image(profile.icon()));
+				item.setImage(XtermPlugin.image(profile.terminalIcon()));
 				item.addListener(SWT.Selection, event -> openTerminal(profile.commandLine()));
 			}
 			new MenuItem(menu, SWT.SEPARATOR);
@@ -1219,8 +1227,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			return;
 		}
 		try {
-			TabIcons.show(getSite(), "platform:/plugin/" + XtermPlugin.ID + '/' + ShellProfiles.iconOf(commandLine), //$NON-NLS-1$
-					activityImages[activity.ordinal()]);
+			TabIcons.show(getSite(), ShellProfiles.icon(commandLine).uri(), activityImages[activity.ordinal()]);
 		} catch (LinkageError | RuntimeException e) {
 			// Not in an Eclipse 4 workbench: the title image is all there is.
 		}
@@ -1593,145 +1600,30 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	}
 
 	private void startNewSession() {
-		boolean offer = openedByUser;
+		boolean opened = openedByUser;
 		openedByUser = false;
-		if (offer && ClaudeSessions.runsClaude(commandLine) && offerEclipseMcp()) {
-			return;
+		TerminalCompanion current = companion();
+		if (opened && current != null) {
+			printedBeforeStart = false;
+			try {
+				if (current.beforeStart(this::startAfterTheExtension)) {
+					return;
+				}
+			} catch (RuntimeException | LinkageError e) {
+				TerminalExtensions.failed(current, e);
+			}
 		}
 		startProcess();
 	}
 
-	/** Answers of {@link #askAddEclipseMcp}. */
-	static final int MCP_ADD = 0;
-	static final int MCP_NOT_NOW = 1;
-	static final int MCP_NEVER = 2;
-
-	/**
-	 * When the MCP server of Eclipse runs and Claude Code does not know it yet, asks the user whether
-	 * to add it, before Claude Code starts so that it uses it at once.
-	 *
-	 * @return {@code true} if Claude Code starts later, once the user has answered
-	 */
-	private boolean offerEclipseMcp() {
-		if (mcpPostponed || !XtermPlugin.isEnabled(XtermPlugin.PREF_OFFER_ECLIPSE_MCP)) {
-			return false;
+	/** Starts the program that an extension has held back, for example to ask the user something. */
+	private void startAfterTheExtension() {
+		if (browser == null || browser.isDisposed() || session != null) {
+			return;
 		}
-		EclipseMcp.Endpoint endpoint = EclipseMcp.running();
-		if (endpoint == null || EclipseMcp.configured(endpoint, workingDirectory)) {
-			return false;
+		if (printedBeforeStart) {
+			keepAboveTheNewShell();
 		}
-		String[] claude = ShellProfiles.parse(commandLine);
-		String[] add = EclipseMcp.mcpCommand(claude, EclipseMcp.addArguments(endpoint));
-		String[] remove = EclipseMcp.mcpCommand(claude, "remove", "--scope", "user", EclipseMcp.NAME); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-		if (add == null || remove == null) {
-			return false;
-		}
-		// A dialog runs the event loop: not from within the call of the page.
-		display.asyncExec(() -> {
-			if (browser.isDisposed()) {
-				return;
-			}
-			int answer = askAddEclipseMcp(endpoint.url());
-			if (answer == MCP_ADD) {
-				addEclipseMcp(add, remove);
-				return;
-			}
-			if (answer == MCP_NEVER) {
-				XtermPlugin.preferences().setValue(XtermPlugin.PREF_OFFER_ECLIPSE_MCP, false);
-			} else {
-				mcpPostponed = true;
-			}
-			startProcessAndSendPendingInput();
-		});
-		return true;
-	}
-
-	/** @return {@link #MCP_ADD}, {@link #MCP_NOT_NOW} or {@link #MCP_NEVER} */
-	int askAddEclipseMcp(String url) {
-		MessageDialog dialog = new MessageDialog(getSite().getShell(), "Eclipse MCP Server", null, //$NON-NLS-1$
-				"The MCP server of Eclipse is running (" + url + ").\n\nAdd it to Claude Code, so that Claude can use " //$NON-NLS-1$ //$NON-NLS-2$
-						+ "this Eclipse: its projects, problems, launches...?\n\nClaude Code keeps it for your user (claude mcp add " //$NON-NLS-1$
-						+ "--scope user " + EclipseMcp.NAME + "), with the token of the server.", //$NON-NLS-1$ //$NON-NLS-2$
-				MessageDialog.QUESTION, new String[] {"&Add", "&Not Now", "Ne&ver Ask"}, 0); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-		int answer = dialog.open();
-		return answer == MCP_ADD || answer == MCP_NEVER ? answer : MCP_NOT_NOW;
-	}
-
-	/** Adds the server with {@code claude mcp}, then starts Claude Code. */
-	private void addEclipseMcp(String[] add, String[] remove) {
-		append(null, "\u001b[2m[Adding the MCP server of Eclipse to Claude Code...]\u001b[0m\r\n".getBytes(StandardCharsets.UTF_8)); //$NON-NLS-1$
-		File directory = workingDirectory;
-		String[] environment = PtySession.environment(add);
-		Thread worker = new Thread(() -> {
-			String failure = runClaude(add, directory, environment);
-			if (failure != null && failure.contains("already exists")) { //$NON-NLS-1$
-				// A server of this name from an earlier run, on another port: replaced.
-				runClaude(remove, directory, environment);
-				failure = runClaude(add, directory, environment);
-			}
-			String message = failure == null ? "\u001b[2m[Claude Code can now use Eclipse.]\u001b[0m\r\n" //$NON-NLS-1$
-					: "\u001b[31m[Could not add the MCP server of Eclipse: " + oneLine(failure).strip() + "]\u001b[0m\r\n"; //$NON-NLS-1$ //$NON-NLS-2$
-			if (failure != null) {
-				XtermPlugin.log("Could not add the MCP server of Eclipse to Claude Code: " + failure, null); //$NON-NLS-1$
-			}
-			display.asyncExec(() -> {
-				if (!browser.isDisposed()) {
-					append(null, message.getBytes(StandardCharsets.UTF_8));
-					keepAboveTheNewShell();
-					startProcessAndSendPendingInput();
-				}
-			});
-		}, "Xterm MCP of Claude Code"); //$NON-NLS-1$
-		worker.setDaemon(true);
-		worker.start();
-	}
-
-	/**
-	 * Runs a command of Claude Code to its end, at most a minute.
-	 *
-	 * @return {@code null} if it succeeded, else what it printed
-	 */
-	static String runClaude(String[] command, File directory, String[] environment) {
-		try {
-			ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
-			if (directory != null && directory.isDirectory()) {
-				builder.directory(directory);
-			}
-			builder.environment().clear();
-			for (String variable : environment) {
-				int equals = variable.indexOf('=', 1);
-				if (equals > 0) {
-					builder.environment().put(variable.substring(0, equals), variable.substring(equals + 1));
-				}
-			}
-			Process process = builder.start();
-			process.getOutputStream().close();
-			java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
-			Thread reader = new Thread(() -> {
-				try {
-					process.getInputStream().transferTo(output);
-				} catch (IOException e) {
-					// The process is gone.
-				}
-			});
-			reader.setDaemon(true);
-			reader.start();
-			if (!process.waitFor(60, TimeUnit.SECONDS)) {
-				process.destroyForcibly();
-				return "no answer after a minute"; //$NON-NLS-1$
-			}
-			reader.join(1000);
-			String printed = output.toString(StandardCharsets.UTF_8);
-			return process.exitValue() == 0 ? null : printed.isBlank() ? "exit code " + process.exitValue() : printed; //$NON-NLS-1$
-		} catch (IOException e) {
-			return String.valueOf(e.getMessage());
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-			return "interrupted"; //$NON-NLS-1$
-		}
-	}
-
-	private void startProcessAndSendPendingInput() {
 		startProcess();
 		if (pendingInput != null && session != null) {
 			String text = pendingInput;
@@ -1740,19 +1632,99 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		}
 	}
 
+	/** @return what an extension does in this terminal, or {@code null} if none knows its program */
+	private TerminalCompanion companion() {
+		if (!companionLooked) {
+			companionLooked = true;
+			companion = TerminalExtensions.accompany(terminal);
+		}
+		return companion;
+	}
+
+	/** The terminal, as the extensions see it. */
+	private final Terminal terminal = new Terminal() {
+		@Override
+		public String commandLine() {
+			return commandLine;
+		}
+
+		@Override
+		public File directory() {
+			return workingDirectory;
+		}
+
+		@Override
+		public String state(String key) {
+			return extensionState.get(key);
+		}
+
+		@Override
+		public void setState(String key, String value) {
+			if (MEMENTO_KEYS.contains(key)) {
+				throw new IllegalArgumentException(key);
+			}
+			if (value == null) {
+				extensionState.remove(key);
+			} else {
+				extensionState.put(key, value);
+			}
+		}
+
+		@Override
+		public void print(String message) {
+			show("\u001b[2m[", message); //$NON-NLS-1$
+		}
+
+		@Override
+		public void printError(String message) {
+			show("\u001b[31m[", message); //$NON-NLS-1$
+		}
+
+		private void show(String style, String message) {
+			if (!isDisposed()) {
+				printedBeforeStart = true;
+				append(null, (style + oneLine(message).strip() + "]\u001b[0m\r\n").getBytes(StandardCharsets.UTF_8)); //$NON-NLS-1$
+			}
+		}
+
+		@Override
+		public org.eclipse.swt.widgets.Shell shell() {
+			return getSite().getShell();
+		}
+
+		@Override
+		public String[] environment() {
+			return PtySession.environment(ShellProfiles.parse(commandLine));
+		}
+
+		@Override
+		public boolean isDisposed() {
+			return browser == null || browser.isDisposed();
+		}
+	};
+
 	private void startProcess() {
 		String[] arguments = ShellProfiles.parse(commandLine);
-		if (ClaudeSessions.runsClaude(commandLine)) {
-			if (claudeSession == null) {
-				claudeSession = UUID.randomUUID().toString();
+		Map<String, String> variables = Map.of();
+		TerminalCompanion current = companion();
+		if (current != null) {
+			try {
+				// For example a coding agent that goes on with the conversation of this terminal.
+				String[] changed = current.arguments(arguments.clone(), resumeProgram);
+				Map<String, String> added = current.environment();
+				if (changed != null && changed.length > 0) {
+					arguments = changed;
+				}
+				if (added != null) {
+					variables = added;
+				}
+			} catch (RuntimeException | LinkageError e) {
+				TerminalExtensions.failed(current, e);
 			}
-			// Resumed only if there is a conversation: Claude Code keeps none before the first message.
-			arguments = ClaudeSessions.withSession(arguments, claudeSession,
-					resumeClaude && ClaudeSessions.exists(claudeSession));
-			resumeClaude = false;
 		}
+		resumeProgram = false;
 		try {
-			session = new PtySession(arguments, workingDirectory, cols, rows, this);
+			session = new PtySession(arguments, workingDirectory, cols, rows, this, variables);
 		} catch (IOException | RuntimeException | LinkageError e) {
 			session = null;
 			ended = true;
@@ -1780,6 +1752,13 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 				restart();
 			}
 			return;
+		}
+		if (companion != null && data.indexOf('\r') >= 0) {
+			try {
+				companion.lineEntered();
+			} catch (RuntimeException | LinkageError e) {
+				TerminalExtensions.failed(companion, e);
+			}
 		}
 		session.write(bytes);
 	}
@@ -1815,7 +1794,16 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	public void exited(PtySession source, int exitCode) {
 		// A program that ends does not report progress any more.
 		if (!display.isDisposed()) {
-			display.asyncExec(() -> showProgress(0));
+			display.asyncExec(() -> {
+				showProgress(0);
+				if (companion != null && source == session) {
+					try {
+						companion.exited(exitCode);
+					} catch (RuntimeException | LinkageError e) {
+						TerminalExtensions.failed(companion, e);
+					}
+				}
+			});
 		}
 		if (keepsViewOpen(exitCode, System.currentTimeMillis() - sessionStart, commandLine)) {
 			ended = true;
@@ -1856,12 +1844,16 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		if (directory != null && directory.isDirectory()) {
 			workingDirectory = directory;
 		}
-		// Claude Code that ended with an error goes on with its conversation; restarted by the user,
-		// it starts a new one.
+		// A program that ended with an error comes back, for example to its conversation; restarted
+		// by the user, it starts anew.
 		if (ended) {
-			resumeClaude = true;
-		} else {
-			claudeSession = null;
+			resumeProgram = true;
+		} else if (companion != null) {
+			try {
+				companion.renewed();
+			} catch (RuntimeException | LinkageError e) {
+				TerminalExtensions.failed(companion, e);
+			}
 		}
 		append(null, "\r\n\u001b[2m[Restarted]\u001b[0m\r\n".getBytes(StandardCharsets.UTF_8)); //$NON-NLS-1$
 		keepAboveTheNewShell();
@@ -2118,6 +2110,13 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		if (session != null) {
 			session.dispose();
 			session = null;
+		}
+		if (companion != null) {
+			try {
+				companion.dispose();
+			} catch (RuntimeException | LinkageError e) {
+				TerminalExtensions.failed(companion, e);
+			}
 		}
 		if (clipboard != null) {
 			clipboard.dispose();

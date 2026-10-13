@@ -3,6 +3,7 @@ package org.eclipse.xterm4eclipse;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
@@ -169,41 +170,6 @@ class ShellProfilesTest {
 	}
 
 	@Test
-	@DisabledOnOs(value = OS.WINDOWS, disabledReason = UNIX_FILES_ONLY)
-	void claudeIsOfferedOnlyWhenItIsOnThePath() throws Exception {
-		Path bin = executable(temp.resolve("bin/claude")).getParent();
-		Path shells = temp.resolve("none");
-		List<ShellProfiles.Profile> unix = ShellProfiles
-				.detect(host("Linux", Map.of("PATH", temp.resolve("absent") + ":" + bin, "SHELL", "/bin/zsh"), shells));
-		ShellProfiles.Profile claude = unix.get(unix.size() - 1);
-		assertEquals("Claude", claude.name());
-		assertEquals("/bin/zsh -l -i -c claude", claude.commandLine(), "through the login shell of the user");
-		assertEquals("icons/shells/claude.png", claude.icon());
-		assertTrue(XtermPlugin.class.getResource("/" + claude.icon()) != null);
-		assertEquals("/bin/bash -l -i -c claude",
-				ShellProfiles.detect(host("Linux", Map.of("PATH", bin.toString()), shells)).stream()
-						.filter(profile -> profile.name().equals("Claude")).findFirst().orElseThrow().commandLine());
-		assertTrue(ShellProfiles.detect(host("Linux", Map.of("HOME", temp.toString()), shells)).stream()
-				.noneMatch(profile -> profile.name().equals("Claude")), "not on the PATH: not offered");
-	}
-
-	@Test
-	void claudeIsOfferedOnWindowsWhenItIsOnThePath() throws Exception {
-		Path native_ = Files.createDirectories(temp.resolve("local bin"));
-		Files.createFile(native_.resolve("claude.exe"));
-		List<ShellProfiles.Profile> windows = ShellProfiles.detect(host("Windows 11", Map.of("PATH", native_.toString()), null));
-		assertEquals(List.of("Claude"), windows.stream().map(ShellProfiles.Profile::name).toList());
-		assertEquals('"' + native_.resolve("claude.exe").toString() + '"', windows.get(0).commandLine());
-
-		Path npm = Files.createDirectories(temp.resolve("npm"));
-		Files.createFile(npm.resolve("claude.cmd"));
-		ShellProfiles.Profile cmd = ShellProfiles.detect(host("Windows 11", Map.of("PATH", npm.toString()), null)).get(0);
-		assertEquals("cmd.exe /c " + npm.resolve("claude.cmd"), cmd.commandLine());
-		assertEquals("Claude", cmd.name());
-		assertEquals("claude", ShellProfiles.displayName(cmd.commandLine()));
-	}
-
-	@Test
 	void windowsWithoutPathFindsNothing() {
 		assertTrue(ShellProfiles.detect(host("Windows 11", Map.of(), null)).isEmpty());
 	}
@@ -233,15 +199,20 @@ class ShellProfilesTest {
 		// Under the current directory: on Windows the temporary folder may be on another drive.
 		Path here = Path.of("").toAbsolutePath();
 		Path under = Files.createTempDirectory(here, "xterm-relative");
-		Path bin = executable(under.resolve("bin/claude")).getParent();
-		executable(bin.resolve("claude.exe"));
+		Path bin = executable(under.resolve("bin/agent")).getParent();
+		executable(bin.resolve("agent.exe"));
 		String relative = here.relativize(bin).toString();
-		assertTrue(new File(relative, "claude").isFile(), "the relative entry does lead to the program");
+		assertTrue(new File(relative, "agent").isFile(), "the relative entry does lead to the program");
 		Path shells = temp.resolve("none");
-		assertTrue(ShellProfiles.detect(host("Linux", Map.of("PATH", relative + "::."), shells)).stream()
-				.noneMatch(profile -> profile.name().equals("Claude")));
-		assertTrue(ShellProfiles.detect(host("Windows 11", Map.of("PATH", relative + ";;."), shells)).stream()
-				.noneMatch(profile -> profile.name().equals("Claude")));
+		// As an extension looks its programs up, for example a coding agent.
+		assertNull(host("Linux", Map.of("PATH", relative + "::."), shells).findOnPath("agent"));
+		assertNull(host("Windows 11", Map.of("PATH", relative + ";;."), shells).findOnPath("agent.exe", "agent.cmd"));
+		// On the real system, whose paths have its separator.
+		boolean onWindows = File.separatorChar == '\\';
+		String program = onWindows ? "agent.exe" : "agent";
+		assertEquals(bin.resolve(program).toFile(), host(onWindows ? "Windows 11" : "Linux",
+				Map.of("PATH", relative + File.pathSeparator + bin), shells).findOnPath("absent", program));
+		assertNull(host("Linux", Map.of(), shells).findOnPath("agent"), "no PATH");
 
 		ShellProfiles.Host windows = host("Windows 11", Map.of(), shells);
 		assertTrue(ShellProfiles.isAbsolute(windows, "C:\\Windows"));

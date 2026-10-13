@@ -10,21 +10,21 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Function;
 
 /** A recording stand-in for an Eclipse interface, without a mocking library. */
-final class Fake implements InvocationHandler {
+public final class Fake implements InvocationHandler {
 
 	private final Map<String, Function<Object[], Object>> handlers = new HashMap<>();
-	final List<String> calls = new CopyOnWriteArrayList<>();
+	public final List<String> calls = new CopyOnWriteArrayList<>();
 
-	Fake on(String method, Function<Object[], Object> handler) {
+	public Fake on(String method, Function<Object[], Object> handler) {
 		handlers.put(method, handler);
 		return this;
 	}
 
-	<T> T as(Class<T> type) {
+	public <T> T as(Class<T> type) {
 		return type.cast(Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[] {type}, this));
 	}
 
-	int count(String method) {
+	public int count(String method) {
 		return (int) calls.stream().filter(method::equals).count();
 	}
 

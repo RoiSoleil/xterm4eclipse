@@ -38,8 +38,8 @@ public final class XtermEditorInput implements IEditorInput, IPersistableElement
 	@Override
 	public ImageDescriptor getImageDescriptor() {
 		String shell = state == null ? null : state.getString("shell"); //$NON-NLS-1$
-		return ImageDescriptor.createFromFile(XtermEditorInput.class,
-				'/' + (shell == null ? "icons/xterm.png" : ShellProfiles.iconOf(shell))); //$NON-NLS-1$
+		return shell == null ? ImageDescriptor.createFromFile(XtermEditorInput.class, "/icons/xterm.png") //$NON-NLS-1$
+				: ShellProfiles.icon(shell).descriptor();
 	}
 
 	@Override

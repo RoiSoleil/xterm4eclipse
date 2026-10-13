@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <?eclipse version="3.4"?>
 <plugin>
+   <extension-point
+         id="terminalExtensions"
+         name="Terminal Extensions"
+         schema="schema/terminalExtensions.exsd"/>
    <extension point="org.eclipse.ui.views">
       <category id="org.eclipse.xterm4eclipse.category" name="Xterm"/>
       <view

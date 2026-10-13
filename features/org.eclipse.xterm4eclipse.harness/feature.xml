@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feature
+      id="org.eclipse.xterm4eclipse.harness.feature"
+      label="Xterm4Eclipse Coding Agents (optional)"
+      version="0.1.0.qualifier"
+      provider-name="RoiSoleil">
+
+   <description url="https://github.com/RoiSoleil/xterm4eclipse">
+      What the terminals of Xterm4Eclipse know about the coding agents: Claude Code, Codex, OpenCode,
+      Reasonix, Gemini CLI, GitHub Copilot CLI, Cursor Agent, Qwen Code, Kilo Code, Crush, Amp, goose
+      and Aider. Their entries in the menus, their icons, their conversations when Eclipse reopens a
+      terminal, and the MCP server of Eclipse. The terminal works without it.
+   </description>
+
+   <license url="https://www.eclipse.org/legal/epl-v20.html">
+      Eclipse Public License, v2.0.
+   </license>
+
+   <requires>
+      <import plugin="org.eclipse.xterm4eclipse" version="0.1.0" match="greaterOrEqual"/>
+   </requires>
+
+   <plugin
+         id="org.eclipse.xterm4eclipse.harness"
+         download-size="0"
+         install-size="0"
+         version="0.0.0"
+         unpack="false"/>
+
+</feature>

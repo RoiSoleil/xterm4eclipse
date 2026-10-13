@@ -45,7 +45,7 @@ public class ShowInXtermMenu extends CompoundContributionItem implements IWorkbe
 				public void fill(Menu menu, int index) {
 					MenuItem item = new MenuItem(menu, SWT.PUSH, index);
 					item.setText(profile.name());
-					item.setImage(XtermPlugin.image(profile.icon()));
+					item.setImage(XtermPlugin.image(profile.terminalIcon()));
 					item.addListener(SWT.Selection, event -> show(profile, directory));
 				}
 			});
