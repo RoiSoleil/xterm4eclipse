@@ -4,9 +4,11 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -14,6 +16,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 
 import org.eclipse.cdt.utils.pty.ConPTY;
+import org.eclipse.cdt.utils.pty.ConPTYInputStream;
+import org.eclipse.cdt.utils.pty.ConPTYOutputStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
@@ -78,6 +82,17 @@ class PtySessionTest implements PtySession.Listener {
 	@EnabledOnOs(OS.WINDOWS)
 	void pseudoConsoleOfWindowsStarts() throws Exception {
 		new ConPTY().close();
+	}
+
+	/**
+	 * The streams of the pseudo console of Windows have no pseudo console any more once they are
+	 * closed, as these ones: the reader thread ended with a NullPointerException when the session
+	 * was closed between two reads.
+	 */
+	@Test
+	void closedStreamsOfThePseudoConsoleAreAtTheirEnd() throws Exception {
+		assertEquals(-1, PtySession.read(new ConPTYInputStream(null), new byte[16]));
+		assertThrows(IOException.class, () -> PtySession.write(new ConPTYOutputStream(null), new byte[] { 'a' }));
 	}
 
 	@Test

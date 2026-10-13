@@ -101,8 +101,7 @@ final class PtySession {
 		}
 		writer.execute(() -> {
 			try {
-				stdin.write(data);
-				stdin.flush();
+				write(stdin, data);
 			} catch (IOException e) {
 				// The process is gone, the reader thread reports the exit.
 			}
@@ -201,7 +200,7 @@ final class PtySession {
 		byte[] buffer = new byte[16 * 1024];
 		try (InputStream in = pty.getInputStream()) {
 			int n;
-			while ((n = in.read(buffer)) != -1) {
+			while ((n = read(in, buffer)) != -1) {
 				if (n > 0) {
 					// The shell writes to its terminal: it has it open.
 					releaseTerminal();
@@ -213,6 +212,31 @@ final class PtySession {
 			}
 		} catch (IOException e) {
 			// Reading from a closed PTY fails with EIO on Linux: this is the normal end of stream.
+		}
+	}
+
+	/**
+	 * Reads from the pseudo terminal. The streams of the pseudo console of Windows forget it when
+	 * they are closed, by the end of the session or by {@link #dispose()}, and then fail with a
+	 * {@link NullPointerException}: this is the end of the stream too.
+	 *
+	 * @return the number of bytes read, or -1 at the end of the stream
+	 */
+	static int read(InputStream in, byte[] buffer) throws IOException {
+		try {
+			return in.read(buffer);
+		} catch (NullPointerException e) {
+			return -1;
+		}
+	}
+
+	/** Writes to the pseudo terminal, see {@link #read(InputStream, byte[])}. */
+	static void write(OutputStream out, byte[] data) throws IOException {
+		try {
+			out.write(data);
+			out.flush();
+		} catch (NullPointerException e) {
+			throw new IOException(e);
 		}
 	}
 
