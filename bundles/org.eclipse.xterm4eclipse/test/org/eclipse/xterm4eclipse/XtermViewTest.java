@@ -20,11 +20,16 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
+import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.eclipse.core.commands.AbstractHandler;
 import org.eclipse.core.commands.Command;
@@ -53,6 +58,7 @@ import org.eclipse.jface.util.LocalSelectionTransfer;
 import org.eclipse.jface.viewers.ISelection;
 import org.eclipse.jface.viewers.StructuredSelection;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.browser.Browser;
 import org.eclipse.swt.dnd.Clipboard;
 import org.eclipse.swt.dnd.DND;
 import org.eclipse.swt.dnd.TextTransfer;
@@ -146,6 +152,34 @@ class XtermViewTest {
 		view.browser.execute("javaBinary('echo binary-$((1+1))\\r')");
 		await("binary input", () -> screen(view).contains("binary-2"));
 		view.setFocus();
+	}
+
+	/**
+	 * With Edge, creating a BrowserFunction waits in the UI thread for WebView2: one for all the java*
+	 * functions, else opening a terminal froze the workbench for more than a second.
+	 */
+	@Test
+	void thePageCallsJavaThroughASingleBrowserFunction() throws Exception {
+		XtermView view = open();
+		Field webBrowserField = Browser.class.getDeclaredField("webBrowser");
+		webBrowserField.setAccessible(true);
+		Object webBrowser = webBrowserField.get(view.browser);
+		Field functionsField = Class.forName("org.eclipse.swt.browser.WebBrowser").getDeclaredField("functions");
+		functionsField.setAccessible(true);
+		assertEquals(1, ((Map<?, ?>) functionsField.get(webBrowser)).size());
+		assertEquals("function", view.browser.evaluate("return typeof javaCall"));
+		// each java* function that the page calls is defined
+		Set<String> called = new TreeSet<>();
+		Matcher matcher = Pattern.compile("\\b(java[A-Z]\\w*)\\(").matcher(XtermPlugin.resource("web/terminal.js"));
+		while (matcher.find()) {
+			called.add(matcher.group(1));
+		}
+		assertTrue(called.size() > 10, "java* functions called by the page: " + called);
+		for (String name : called) {
+			assertEquals("function", view.browser.evaluate("return typeof " + name), name);
+		}
+		assertNull(view.browser.evaluate("return javaCall('javaNoSuchFunction', 1)"));
+		assertNull(view.browser.evaluate("return javaCall()"));
 	}
 
 	@Test

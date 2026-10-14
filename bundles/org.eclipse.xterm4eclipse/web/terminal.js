@@ -1,4 +1,7 @@
-/* Glue between xterm.js and the Java side (BrowserFunctions prefixed with "java"). */
+/*
+ * Glue between xterm.js and the Java side: the functions prefixed with "java", which XtermView defines in the page,
+ * just before it calls xtermInit, as calls of its single BrowserFunction javaCall.
+ */
 (function () {
 	var THEMES = {
 		dark: {

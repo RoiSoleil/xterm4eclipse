@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -137,6 +138,10 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	private static XtermView lastActive;
 
 	Browser browser;
+	/** The java* functions of the page, by name, called through a single BrowserFunction, see {@link #registerJavaCall()} */
+	private final Map<String, JsFunction> functions = new LinkedHashMap<>();
+	/** The script that defines the java* functions in the page, see {@link #registerJavaCall()} */
+	private String javaFunctionsScript;
 	private Display display;
 	private Clipboard clipboard;
 	private volatile PtySession session;
@@ -347,6 +352,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		parent.setLayout(new BrowserLayout());
 		display.timerExec(revealTimeoutMillis, this::reveal);
 		registerFunctions();
+		registerJavaCall();
 		// The java* functions give the page the keyboard of the shell: no other page may ever be
 		// loaded in this browser, nor open a window of its own.
 		browser.addLocationListener(LocationListener.changingAdapter(event -> {
@@ -366,9 +372,11 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 				}
 			});
 		}
-		// The java* functions only exist in the page once it is loaded, so the page waits for us.
+		// The java* functions are defined in the page once it is loaded, just before xtermInit: the page
+		// waits for us.
 		browser.addProgressListener(
-				ProgressListener.completedAdapter(event -> browser.execute("xtermInit(" + config() + ")"))); //$NON-NLS-1$ //$NON-NLS-2$
+				ProgressListener.completedAdapter(
+						event -> browser.execute(javaFunctionsScript + "xtermInit(" + config() + ")"))); //$NON-NLS-1$ //$NON-NLS-2$
 		try {
 			// One file per plug-in version, shared by all the terminals.
 			Path page = WebPage.materialize(
@@ -691,17 +699,45 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	}
 
 	private void function(String name, JsFunction body) {
-		new BrowserFunction(browser, name) {
+		functions.put(name, body);
+	}
+
+	/**
+	 * Gives the page its java* functions through a single BrowserFunction: with Edge, creating one
+	 * waits in the UI thread for WebView2 to install its script, a round trip of tens of milliseconds
+	 * each, which froze the workbench for more than a second when a terminal opened.
+	 */
+	private void registerJavaCall() {
+		javaFunctionsScript = javaFunctions();
+		new BrowserFunction(browser, "javaCall") { //$NON-NLS-1$
 			@Override
 			public Object function(Object[] arguments) {
+				String name = arguments.length > 0 && arguments[0] instanceof String string ? string : null;
+				JsFunction body = name == null ? null : functions.get(name);
+				if (body == null) {
+					// the name comes from the page: not all of it
+					String shown = name == null || name.length() <= 64 ? name : name.substring(0, 64) + '\u2026';
+					XtermPlugin.log("No Java function " + shown + " for the terminal page", null); //$NON-NLS-1$ //$NON-NLS-2$
+					return null;
+				}
 				try {
-					return body.call(arguments);
+					return body.call(Arrays.copyOfRange(arguments, 1, arguments.length));
 				} catch (RuntimeException e) {
 					XtermPlugin.log("Error in " + name, e); //$NON-NLS-1$
 					return null;
 				}
 			}
 		};
+	}
+
+	/** The script that defines each java* function of the page as a call of javaCall. */
+	private String javaFunctions() {
+		StringBuilder names = new StringBuilder();
+		for (String name : functions.keySet()) {
+			names.append(names.isEmpty() ? "" : ",").append('\'').append(name).append('\''); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+		return "[" + names + "].forEach(function (name) { window[name] = function () {" //$NON-NLS-1$ //$NON-NLS-2$
+				+ " return javaCall.apply(null, [name].concat(Array.prototype.slice.call(arguments))); }; });"; //$NON-NLS-1$
 	}
 
 	private void createActions() {
