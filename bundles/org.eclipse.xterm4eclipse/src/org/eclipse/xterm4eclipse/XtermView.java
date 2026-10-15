@@ -142,6 +142,8 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	private final Map<String, JsFunction> functions = new LinkedHashMap<>();
 	/** The script that defines the java* functions in the page, see {@link #registerJavaCall()} */
 	private String javaFunctionsScript;
+	/** The single BrowserFunction of the page, created once the page is loaded, see {@link #registerJavaCall()} */
+	private BrowserFunction javaCall;
 	private Display display;
 	private Clipboard clipboard;
 	private volatile PtySession session;
@@ -352,7 +354,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		parent.setLayout(new BrowserLayout());
 		display.timerExec(revealTimeoutMillis, this::reveal);
 		registerFunctions();
-		registerJavaCall();
+		javaFunctionsScript = javaFunctions();
 		// The java* functions give the page the keyboard of the shell: no other page may ever be
 		// loaded in this browser, nor open a window of its own.
 		browser.addLocationListener(LocationListener.changingAdapter(event -> {
@@ -374,9 +376,12 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		}
 		// The java* functions are defined in the page once it is loaded, just before xtermInit: the page
 		// waits for us.
-		browser.addProgressListener(
-				ProgressListener.completedAdapter(
-						event -> browser.execute(javaFunctionsScript + "xtermInit(" + config() + ")"))); //$NON-NLS-1$ //$NON-NLS-2$
+		browser.addProgressListener(ProgressListener.completedAdapter(event -> {
+			if (javaCall == null) {
+				registerJavaCall();
+			}
+			browser.execute(javaFunctionsScript + "xtermInit(" + config() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
+		}));
 		try {
 			// One file per plug-in version, shared by all the terminals.
 			Path page = WebPage.materialize(
@@ -706,10 +711,14 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	 * Gives the page its java* functions through a single BrowserFunction: with Edge, creating one
 	 * waits in the UI thread for WebView2 to install its script, a round trip of tens of milliseconds
 	 * each, which froze the workbench for more than a second when a terminal opened.
+	 * <p>
+	 * It is created once the page is loaded: with Edge, a BrowserFunction created before waits in the
+	 * UI thread for WebView2 to start, a second or more. It is defined in the loaded page, before
+	 * xtermInit, and in the pages loaded later.
+	 * </p>
 	 */
 	private void registerJavaCall() {
-		javaFunctionsScript = javaFunctions();
-		new BrowserFunction(browser, "javaCall") { //$NON-NLS-1$
+		javaCall = new BrowserFunction(browser, "javaCall") { //$NON-NLS-1$
 			@Override
 			public Object function(Object[] arguments) {
 				String name = arguments.length > 0 && arguments[0] instanceof String string ? string : null;

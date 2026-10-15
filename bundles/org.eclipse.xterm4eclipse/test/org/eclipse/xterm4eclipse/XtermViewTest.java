@@ -68,6 +68,7 @@ import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.graphics.ImageData;
 import org.eclipse.swt.graphics.RGB;
 import org.eclipse.swt.graphics.Rectangle;
+import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Event;
 import org.eclipse.swt.widgets.Menu;
@@ -161,12 +162,7 @@ class XtermViewTest {
 	@Test
 	void thePageCallsJavaThroughASingleBrowserFunction() throws Exception {
 		XtermView view = open();
-		Field webBrowserField = Browser.class.getDeclaredField("webBrowser");
-		webBrowserField.setAccessible(true);
-		Object webBrowser = webBrowserField.get(view.browser);
-		Field functionsField = Class.forName("org.eclipse.swt.browser.WebBrowser").getDeclaredField("functions");
-		functionsField.setAccessible(true);
-		assertEquals(1, ((Map<?, ?>) functionsField.get(webBrowser)).size());
+		assertEquals(1, browserFunctions(view.browser).size());
 		assertEquals("function", view.browser.evaluate("return typeof javaCall"));
 		// each java* function that the page calls is defined
 		Set<String> called = new TreeSet<>();
@@ -180,6 +176,40 @@ class XtermViewTest {
 		}
 		assertNull(view.browser.evaluate("return javaCall('javaNoSuchFunction', 1)"));
 		assertNull(view.browser.evaluate("return javaCall()"));
+	}
+
+	/**
+	 * With Edge, a BrowserFunction created before WebView2 has started waits for it in the UI thread, a
+	 * second or more when a terminal opens: it is created once the page is loaded.
+	 */
+	@Test
+	void theBrowserFunctionIsCreatedOnceThePageIsLoaded() throws Exception {
+		int[] created = { -1 };
+		XtermView view = open(new XtermView() {
+			@Override
+			public void createPartControl(Composite parent) {
+				super.createPartControl(parent);
+				created[0] = browserFunctions(browser).size();
+			}
+		});
+
+		assertEquals(0, created[0], "no BrowserFunction when the view is created");
+		assertEquals(1, browserFunctions(view.browser).size());
+		run(view, "echo after-$((2+3))", "after-5");
+	}
+
+	/** The BrowserFunctions of the browser, kept by SWT. */
+	private static Map<?, ?> browserFunctions(Browser browser) {
+		try {
+			Field webBrowserField = Browser.class.getDeclaredField("webBrowser");
+			webBrowserField.setAccessible(true);
+			Object webBrowser = webBrowserField.get(browser);
+			Field functionsField = Class.forName("org.eclipse.swt.browser.WebBrowser").getDeclaredField("functions");
+			functionsField.setAccessible(true);
+			return (Map<?, ?>) functionsField.get(webBrowser);
+		} catch (ReflectiveOperationException e) {
+			throw new AssertionError(e);
+		}
 	}
 
 	@Test
