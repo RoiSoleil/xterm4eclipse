@@ -24,6 +24,8 @@ final class HarnessPlugin {
 	static final String PREFERENCES = "org.eclipse.xterm4eclipse"; //$NON-NLS-1$
 	/** New terminals of a coding agent offer to add the MCP server of Eclipse when it runs. */
 	static final String PREF_OFFER_ECLIPSE_MCP = "offerEclipseMcp"; //$NON-NLS-1$
+	/** The MCP server of Eclipse is added without asking: the user answered "Always Add". */
+	static final String PREF_ADD_ECLIPSE_MCP_WITHOUT_ASKING = "addEclipseMcpWithoutAsking"; //$NON-NLS-1$
 
 	private static final Bundle BUNDLE = FrameworkUtil.getBundle(HarnessPlugin.class);
 	private static IPreferenceStore preferences;
@@ -36,6 +38,7 @@ final class HarnessPlugin {
 			preferences = BUNDLE != null ? new ScopedPreferenceStore(InstanceScope.INSTANCE, PREFERENCES)
 					: new PreferenceStore();
 			preferences.setDefault(PREF_OFFER_ECLIPSE_MCP, true);
+			preferences.setDefault(PREF_ADD_ECLIPSE_MCP_WITHOUT_ASKING, false);
 		}
 		return preferences;
 	}

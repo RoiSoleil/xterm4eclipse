@@ -62,7 +62,7 @@ class McpOfferTest extends HarnessTestCase {
 			assertTrue(page.getDescription().contains("Claude Code, Codex, OpenCode, Reasonix"), page.getDescription());
 			List<Button> checkboxes = new ArrayList<>();
 			collect(page.getControl(), checkboxes);
-			assertEquals(1, checkboxes.size());
+			assertEquals(2, checkboxes.size());
 			assertTrue(checkboxes.get(0).getText().contains("MCP server of Eclipse"));
 			assertFalse(checkboxes.get(0).getSelection());
 			checkboxes.get(0).setSelection(true);
@@ -76,6 +76,45 @@ class McpOfferTest extends HarnessTestCase {
 		started(open(commandLine), 1);
 		assertEquals(2, asked.size());
 		assertEquals(1, mcpCalls().size());
+	}
+
+	@Test
+	void alwaysAddsTheServerAndTheNextTimesWithoutAsking() throws Exception {
+		eclipseMcpRuns();
+		String commandLine = program("claude");
+		answer = McpOffer.ALWAYS;
+		started(open(commandLine), 1);
+		assertEquals(1, asked.size());
+		assertEquals(1, mcpCalls().size(), "added at once");
+		assertTrue(HarnessPlugin.preferences().getBoolean(HarnessPlugin.PREF_ADD_ECLIPSE_MCP_WITHOUT_ASKING));
+
+		// The stand-in of the agent does not keep the server: missing again, added without asking.
+		answer = McpOffer.NEVER;
+		started(open(commandLine), 1);
+		assertEquals(1, asked.size(), "not asked again");
+		assertEquals(2, mcpCalls().size(), "added again");
+
+		// The preference page shows it, and brings the question back.
+		Shell shell = new Shell(DISPLAY);
+		try {
+			HarnessPreferencePage page = new HarnessPreferencePage();
+			page.init(null);
+			page.createControl(shell);
+			List<Button> checkboxes = new ArrayList<>();
+			collect(page.getControl(), checkboxes);
+			Button withoutAsking = checkboxes.get(1);
+			assertTrue(withoutAsking.getText().contains("without asking"), withoutAsking.getText());
+			assertTrue(withoutAsking.getSelection());
+			withoutAsking.setSelection(false);
+			withoutAsking.notifyListeners(SWT.Selection, new Event());
+			assertTrue(page.performOk());
+		} finally {
+			shell.dispose();
+		}
+		assertFalse(HarnessPlugin.preferences().getBoolean(HarnessPlugin.PREF_ADD_ECLIPSE_MCP_WITHOUT_ASKING));
+		answer = McpOffer.NOT_NOW;
+		started(open(commandLine), 1);
+		assertEquals(2, asked.size(), "asked again");
 	}
 
 	private static void collect(Control control, List<Button> checkboxes) {

@@ -86,6 +86,7 @@ abstract class HarnessTestCase {
 		};
 		SessionFinder.delayMillis = 200;
 		HarnessPlugin.preferences().setToDefault(HarnessPlugin.PREF_OFFER_ECLIPSE_MCP);
+		HarnessPlugin.preferences().setToDefault(HarnessPlugin.PREF_ADD_ECLIPSE_MCP_WITHOUT_ASKING);
 	}
 
 	@AfterEach
@@ -103,6 +104,7 @@ abstract class HarnessTestCase {
 		SessionFinder.delayMillis = previousDelay;
 		EclipseMcp.workspace = null;
 		HarnessPlugin.preferences().setToDefault(HarnessPlugin.PREF_OFFER_ECLIPSE_MCP);
+		HarnessPlugin.preferences().setToDefault(HarnessPlugin.PREF_ADD_ECLIPSE_MCP_WITHOUT_ASKING);
 		TestWorkbench.setDefaultCommandLine("");
 	}
 

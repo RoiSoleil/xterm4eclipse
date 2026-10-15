@@ -99,9 +99,9 @@ any other program.
 - When the [MCP server of Eclipse](https://github.com/vogellacompany/eclipse-mcp-server) runs, a new
   terminal of an agent that does not know it yet offers to add it as
   `eclipse-mcp-server-via-xterm4eclipse`, for the user and with the token of the server, before the
-  agent starts so that it uses it at once: *Add*, *Not Now* (until Eclipse restarts) or *Never Ask*
-  (also in *Window > Preferences > Xterm Terminal > Coding Agents*). The agent adds the server
-  itself, with its own command.
+  agent starts so that it uses it at once: *Add*, *Always Add* (the next times without asking), *Not
+  Now* (until Eclipse restarts) or *Never Ask* (*Always Add* and *Never Ask* are also in *Window >
+  Preferences > Xterm Terminal > Coding Agents*). The agent adds the server itself, with its own command.
 - A command line that chooses its conversation itself (`claude --continue`, `codex resume`...), or
   that runs another command of the agent (`codex exec`...), is run as it is.
 

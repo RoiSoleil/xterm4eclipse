@@ -28,5 +28,8 @@ public class HarnessPreferencePage extends FieldEditorPreferencePage implements 
 		addField(new BooleanFieldEditor(HarnessPlugin.PREF_OFFER_ECLIPSE_MCP,
 				"Offer to add the &MCP server of Eclipse to new terminals of a coding agent, when it runs", //$NON-NLS-1$
 				getFieldEditorParent()));
+		addField(new BooleanFieldEditor(HarnessPlugin.PREF_ADD_ECLIPSE_MCP_WITHOUT_ASKING,
+				"Add it &without asking", //$NON-NLS-1$
+				getFieldEditorParent()));
 	}
 }

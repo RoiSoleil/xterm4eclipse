@@ -20,11 +20,16 @@ final class McpOffer {
 	static final int ADD = 0;
 	static final int NOT_NOW = 1;
 	static final int NEVER = 2;
+	/** Adds the server, and the next times without asking. */
+	static final int ALWAYS = 3;
+
+	/** The answer of each button of the dialog, in their order. */
+	private static final int[] BUTTON_ANSWERS = {ADD, ALWAYS, NOT_NOW, NEVER};
 
 	/** Asks the user. */
 	@FunctionalInterface
 	interface Asker {
-		/** @return {@link #ADD}, {@link #NOT_NOW} or {@link #NEVER} */
+		/** @return {@link #ADD}, {@link #ALWAYS}, {@link #NOT_NOW} or {@link #NEVER} */
 		int ask(Terminal terminal, Harness harness, String url);
 	}
 
@@ -62,13 +67,18 @@ final class McpOffer {
 			if (terminal.isDisposed()) {
 				return;
 			}
-			int answer = asker.ask(terminal, harness, endpoint.url());
-			if (answer == ADD) {
+			// Read now: another terminal may have been answered "Always Add" meanwhile.
+			boolean withoutAsking = HarnessPlugin.preferences().getBoolean(HarnessPlugin.PREF_ADD_ECLIPSE_MCP_WITHOUT_ASKING);
+			int answer = withoutAsking ? ADD : asker.ask(terminal, harness, endpoint.url());
+			if (answer == ALWAYS) {
+				remember(HarnessPlugin.PREF_ADD_ECLIPSE_MCP_WITHOUT_ASKING, true);
+			}
+			if (answer == ADD || answer == ALWAYS) {
 				add(terminal, harness, add, remove, display, start);
 				return;
 			}
 			if (answer == NEVER) {
-				never();
+				remember(HarnessPlugin.PREF_OFFER_ECLIPSE_MCP, false);
 			} else {
 				postponed = true;
 			}
@@ -77,9 +87,10 @@ final class McpOffer {
 		return true;
 	}
 
-	private static void never() {
+	/** Keeps an answer of the user in the preferences. */
+	private static void remember(String preference, boolean value) {
 		IPreferenceStore preferences = HarnessPlugin.preferences();
-		preferences.setValue(HarnessPlugin.PREF_OFFER_ECLIPSE_MCP, false);
+		preferences.setValue(preference, value);
 		if (preferences instanceof ScopedPreferenceStore scoped) {
 			try {
 				scoped.save();
@@ -99,9 +110,10 @@ final class McpOffer {
 						+ ", so that it can use this Eclipse: its projects, problems, launches...?\n\n" //$NON-NLS-1$
 						+ harness.product() + " keeps it for your user (" + harness.program() + " mcp add " //$NON-NLS-1$ //$NON-NLS-2$
 						+ EclipseMcp.NAME + kept,
-				MessageDialog.QUESTION, new String[] {"&Add", "&Not Now", "Ne&ver Ask"}, 0); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-		int answer = dialog.open();
-		return answer == ADD || answer == NEVER ? answer : NOT_NOW;
+				MessageDialog.QUESTION, new String[] {"&Add", "A&lways Add", "&Not Now", "Ne&ver Ask"}, 0); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+		int button = dialog.open();
+		// closed without a button: as "Not Now"
+		return button >= 0 && button < BUTTON_ANSWERS.length ? BUTTON_ANSWERS[button] : NOT_NOW;
 	}
 
 	/** Adds the server with the command of the agent, then starts the agent. */
