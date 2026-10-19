@@ -1594,6 +1594,34 @@ class XtermViewTest {
 		assertNull(XtermView.resolveFile("bin", directory), "a directory is not a file");
 		assertNull(XtermView.resolveFile("bin/env", null));
 		assertNull(XtermView.resolveFile("no/such/file.txt", directory));
+		// a path of Git is relative to the root of the repository, the shell is in a directory of it
+		File inRepository = new File(directory, "ecore/app/Main.java");
+		Files.createDirectories(inRepository.getParentFile().toPath());
+		Files.writeString(inRepository.toPath(), "");
+		File shellDirectory = new File(directory, "ecore/sub");
+		Files.createDirectories(shellDirectory.toPath());
+		assertNull(XtermView.resolveFile("ecore/app/Main.java", shellDirectory), "no repository");
+		Files.createDirectories(new File(directory, ".git").toPath());
+		assertEquals(inRepository, XtermView.resolveFile("ecore/app/Main.java", shellDirectory));
+		assertNull(XtermView.resolveFile("ecore/app/Other.java", shellDirectory));
+		assertEquals(env, XtermView.resolveFile("bin/env", shellDirectory), "from the root of the repository");
+		// only the root of the repository, not the directories between: a file of that name in one of them
+		File shadow = new File(directory, "ecore/ecore/app/Main.java");
+		Files.createDirectories(shadow.getParentFile().toPath());
+		Files.writeString(shadow.toPath(), "");
+		assertEquals(inRepository, XtermView.resolveFile("ecore/app/Main.java", shellDirectory));
+		// not outside the repository, nor from the root itself
+		assertNull(XtermView.resolveFile("ecore/app/Main.java", directory.getParentFile()));
+		assertNull(XtermView.resolveFile("../ecore/app/Main.java", new File(directory, "ecore/ecore/x")));
+		assertNull(XtermView.resolveFile("ecore/app/Other.java", directory));
+		// a name that only starts with two dots, and a worktree or a submodule, whose .git is a file
+		File dotted = new File(directory, "..dir/Main.java");
+		Files.createDirectories(dotted.getParentFile().toPath());
+		Files.writeString(dotted.toPath(), "");
+		assertEquals(dotted, XtermView.resolveFile("..dir/Main.java", shellDirectory));
+		Files.delete(new File(directory, ".git").toPath());
+		Files.writeString(new File(directory, ".git").toPath(), "gitdir: elsewhere");
+		assertEquals(inRepository, XtermView.resolveFile("ecore/app/Main.java", shellDirectory));
 		assertNull(XtermView.resolveFile(" ", directory));
 		assertNull(XtermView.resolveFile(null, directory));
 		assertNull(XtermView.resolveFile("~/no/such/file.txt", directory));

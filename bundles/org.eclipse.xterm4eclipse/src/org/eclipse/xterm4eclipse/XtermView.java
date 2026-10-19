@@ -607,8 +607,8 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 
 	/**
 	 * @param path
-	 *            a path printed in the terminal, absolute, relative to the directory of the shell or
-	 *            to the home directory ({@code ~/...})
+	 *            a path printed in the terminal, absolute, relative to the directory of the shell, to
+	 *            the root of its Git repository or to the home directory ({@code ~/...})
 	 * @return the file, or {@code null} if there is no such file
 	 */
 	static File resolveFile(String path, File directory) {
@@ -625,12 +625,41 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 				return null;
 			}
 			file = new File(directory, name);
+			if (!file.isFile()) {
+				File inRepository = inEnclosingRepository(name, directory);
+				file = inRepository != null ? inRepository : file;
+			}
 		}
 		try {
 			file = file.getCanonicalFile();
 		} catch (IOException e) {
 			return null;
 		}
+		return file.isFile() ? file : null;
+	}
+
+	/**
+	 * Git prints the paths relative to the root of the repository, whatever the directory of the
+	 * shell in it ({@code create mode 100644 app/src/Main.java}).
+	 *
+	 * @return the file at the given path from the root of the Git repository of the given directory, or {@code null} if there is none
+	 */
+	private static File inEnclosingRepository(String path, File directory) {
+		for (String segment : path.split("[/\\\\]")) { //$NON-NLS-1$
+			if (segment.equals("..")) { //$NON-NLS-1$
+				return null;
+			}
+		}
+		File shell = directory.getAbsoluteFile();
+		File root = shell;
+		// .git is a file in a worktree or a submodule
+		while (root != null && !new File(root, ".git").exists()) { //$NON-NLS-1$
+			root = root.getParentFile();
+		}
+		if (root == null || root.equals(shell)) {
+			return null;
+		}
+		File file = new File(root, path);
 		return file.isFile() ? file : null;
 	}
 
