@@ -1660,6 +1660,9 @@ class XtermViewTest {
 			type(view, "\u0003");
 		}
 
+		// The program ends after it printed: the shell is at its prompt once it is back
+		await("shell back at the prompt", () -> !view.isDirty());
+
 		// A view running a program of its own always sends it ESC CR.
 		XtermView program = new XtermView();
 		ShellProfiles.setDefaultCommandLine(SHELL + " -c \"cat -v\"");
