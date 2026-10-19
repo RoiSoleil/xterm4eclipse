@@ -1528,8 +1528,10 @@ class XtermViewTest {
 
 	@Test
 	void ctrlClickOnAFileToCreateOpensItEmpty() throws Exception {
-		Path directory = Files.createTempDirectory("xterm-links");
-		File missing = new File(directory.toFile().getCanonicalFile(), ".netrc");
+		// A path of the home directory: the temporary directory of macOS and Windows is too long for a
+		// line of the terminal, and a link does not span two lines.
+		String name = ".xterm-link-" + System.nanoTime();
+		File missing = new File(System.getProperty("user.home"), name);
 		List<String> opened = new ArrayList<>();
 		XtermView view = open(new XtermView() {
 			@Override
@@ -1537,14 +1539,13 @@ class XtermViewTest {
 				opened.add(file.getName() + "@" + line + ":" + column);
 			}
 		});
-		run(view, "echo \"put it in " + shellPath(missing) + " now\"", "now");
+		run(view, "echo \"put it in ~/" + name + " now\"", "now");
 
-		awaitLink(view, shellPath(missing));
-		click(view, shellPath(missing), true);
+		awaitLink(view, "~/" + name);
+		click(view, "~/" + name, true);
 		await("file opened", () -> opened.size() == 1);
-		assertEquals(".netrc@0:0", opened.get(0));
+		assertEquals(name + "@0:0", opened.get(0));
 		assertFalse(missing.exists(), "opening it does not create it");
-		deleteTree(directory);
 	}
 
 	/**
