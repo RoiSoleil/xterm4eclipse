@@ -47,6 +47,11 @@
             name="Open an Xterm Terminal"
             description="Opens a new Xterm terminal running the default shell"/>
       <command
+            id="org.eclipse.xterm4eclipse.openChoosing"
+            categoryId="org.eclipse.xterm4eclipse.commands"
+            name="Open an Xterm Terminal Choosing the Shell"
+            description="Asks which of the shells found on this system to run in a new Xterm terminal"/>
+      <command
             id="org.eclipse.xterm4eclipse.runSelection"
             categoryId="org.eclipse.xterm4eclipse.commands"
             name="Run Selected Text in Terminal"
@@ -56,6 +61,9 @@
       <handler
             commandId="org.eclipse.xterm4eclipse.open"
             class="org.eclipse.xterm4eclipse.OpenTerminalHandler"/>
+      <handler
+            commandId="org.eclipse.xterm4eclipse.openChoosing"
+            class="org.eclipse.xterm4eclipse.OpenChoosingShellHandler"/>
       <handler
             commandId="org.eclipse.xterm4eclipse.runSelection"
             class="org.eclipse.xterm4eclipse.RunSelectionHandler">
@@ -77,11 +85,55 @@
             contextId="org.eclipse.ui.contexts.window"
             schemeId="org.eclipse.ui.defaultAcceleratorConfiguration"
             sequence="M1+M2+M3+X"/>
+      <!-- The shortcuts of the Terminal view of Eclipse (Local Terminal) open an Xterm terminal instead.
+           A key without command removes the binding of the same trigger from the window context, the
+           ones of Xterm are in its parent context so that they are not removed with it. -->
+      <key
+            commandId="org.eclipse.xterm4eclipse.open"
+            contextId="org.eclipse.ui.contexts.dialogAndWindow"
+            schemeId="org.eclipse.ui.defaultAcceleratorConfiguration"
+            sequence="CTRL+M3+T"/>
+      <key
+            contextId="org.eclipse.ui.contexts.window"
+            schemeId="org.eclipse.ui.defaultAcceleratorConfiguration"
+            sequence="CTRL+M3+T"/>
+      <key
+            contextId="org.eclipse.ui.contexts.window"
+            schemeId="org.eclipse.ui.defaultAcceleratorConfiguration"
+            sequence="CTRL+SHIFT+M3+T"/>
+      <key
+            commandId="org.eclipse.xterm4eclipse.openChoosing"
+            contextId="org.eclipse.ui.contexts.dialogAndWindow"
+            schemeId="org.eclipse.ui.defaultAcceleratorConfiguration"
+            sequence="CTRL+SHIFT+M3+T"/>
       <key
             commandId="org.eclipse.xterm4eclipse.runSelection"
             contextId="org.eclipse.ui.textEditorScope"
             schemeId="org.eclipse.ui.defaultAcceleratorConfiguration"
             sequence="M1+M3+CR"/>
+   </extension>
+   <!-- The "Show In > Terminal" menus of the Terminal view of Eclipse are hidden: Xterm replaces them.
+        They are shown again by enabling the capability in Window > Preferences > General > Capabilities. -->
+   <extension point="org.eclipse.ui.activities">
+      <category
+            id="org.eclipse.xterm4eclipse.category"
+            name="Terminal"
+            description="The Terminal view of Eclipse (Local Terminal)">
+      </category>
+      <activity
+            id="org.eclipse.xterm4eclipse.localTerminalMenus"
+            name="Show in Local Terminal"
+            description="The Show In menus that open the Terminal view of Eclipse (Local Terminal) in a folder">
+      </activity>
+      <categoryActivityBinding
+            activityId="org.eclipse.xterm4eclipse.localTerminalMenus"
+            categoryId="org.eclipse.xterm4eclipse.category"/>
+      <activityPatternBinding
+            activityId="org.eclipse.xterm4eclipse.localTerminalMenus"
+            pattern="org\.eclipse\.terminal\.view\.ui/org\.eclipse\.terminal\.view\.ui\.(ProjectExplorer|PackageExplorer|BndtoolsExplorer)\.menu\.showIn"/>
+      <activityPatternBinding
+            activityId="org.eclipse.xterm4eclipse.localTerminalMenus"
+            pattern="org\.eclipse\.terminal\.connector\.local/org\.eclipse\.terminal\.connector\.local\.commands\.showin\.launch"/>
    </extension>
    <extension point="org.eclipse.ui.menus">
       <menuContribution locationURI="popup:org.eclipse.ui.popup.any?after=additions">

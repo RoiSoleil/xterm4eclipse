@@ -17,9 +17,9 @@ import org.eclipse.jface.bindings.keys.ParseException;
  */
 final class EclipseShortcuts {
 
-	/** Quick Access, Open Resource, Open Type, next/previous view, editor and tab, new terminal. */
+	/** Quick Access, Open Resource, Open Type, next/previous view, editor and tab, new terminal (also choosing the shell, with the Control key even on macOS, as in the Terminal view). */
 	static final String DEFAULTS = "M1+3, M1+M2+R, M1+M2+T, M1+F6, M1+M2+F6, M1+F7, M1+M2+F7, M1+F8, M1+M2+F8, " //$NON-NLS-1$
-			+ "M1+PAGE_UP, M1+PAGE_DOWN, M1+M2+M3+X"; //$NON-NLS-1$
+			+ "M1+PAGE_UP, M1+PAGE_DOWN, M1+M2+M3+X, CTRL+M3+T, CTRL+M2+M3+T"; //$NON-NLS-1$
 
 	private EclipseShortcuts() {
 	}

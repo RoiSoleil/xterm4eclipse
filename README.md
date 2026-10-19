@@ -32,6 +32,10 @@ not want it.
 - New terminals start in the project of the selected resource, or else of the file of the active
   editor.
 - Toolbar button and Ctrl+Alt+Shift+X to open a terminal.
+- Ctrl+Alt+T opens a terminal with the default shell, and Ctrl+Alt+Shift+T asks which of the shells found on
+  the system to open: they replace the ones of the Terminal view of Eclipse (Local Terminal), whose *Show In >
+  Terminal* menus are hidden too. *Window > Preferences > General > Capabilities* shows them again (*Terminal*
+  > *Show in Local Terminal*).
 - The tab shows the icon of the shell or program it runs (bash, zsh, fish, PowerShell, cmd, Git Bash,
   WSL), with a badge for a running command (orange dot) and for a finished command or a program
   asking for attention through the bell or an OSC 9 / OSC 777 notification (green dot).
@@ -46,7 +50,7 @@ not want it.
   selection) / Ctrl+V on Windows.
 - The keys go to the shell, except a few Eclipse shortcuts that keep working in the terminal (Quick
   Access Ctrl+3, Open Resource / Type Ctrl+Shift+R / T, next view / editor / perspective
-  Ctrl+F6 / F7 / F8, Ctrl+PageUp / PageDown, new terminal Ctrl+Alt+Shift+X): the list can be changed
+  Ctrl+F6 / F7 / F8, Ctrl+PageUp / PageDown, new terminal Ctrl+Alt+Shift+X, Ctrl+Alt+T, Ctrl+Alt+Shift+T): the list can be changed
   in the preferences.
 - *Run Selected Text in Terminal* (Ctrl+Alt+Enter, Cmd+Alt+Enter on macOS, or the context menu of
   text editors): runs the selection, or the line of the cursor, in the last active terminal (a new
