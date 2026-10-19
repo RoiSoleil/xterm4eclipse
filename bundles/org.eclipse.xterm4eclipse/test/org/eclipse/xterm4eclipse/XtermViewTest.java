@@ -1683,10 +1683,10 @@ class XtermViewTest {
 		// the pseudo console turns it into Alt+Enter for the native programs, such as Claude Code on
 		// Node, which read it back as ESC CR: the programs of Git Bash do not.
 		if (TestWorkbench.WINDOWS) {
+			// Node takes a while to start on Windows: a key typed before it reads in raw mode is lost.
 			type(view, "node -e 'process.stdin.setRawMode(true); process.stdin.once(\"data\", function (d) {"
-					+ " console.log(\"got\" + JSON.stringify(String(d))); process.exit(); })'\r");
-			await("program running", view::isDirty);
-			pump(1000);
+					+ " console.log(\"got\" + JSON.stringify(String(d))); process.exit(); }); console.log(\"re\" + \"ady\")'\r");
+			await("program ready", () -> screen(view).contains("\nready"));
 			shiftEnter(view);
 			await("Alt+Enter received", () -> screen(view).contains("got\"\\u001b\\r\""));
 		} else {
