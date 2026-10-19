@@ -1526,6 +1526,27 @@ class XtermViewTest {
 		deleteTree(directory);
 	}
 
+	@Test
+	void ctrlClickOnAFileToCreateOpensItEmpty() throws Exception {
+		Path directory = Files.createTempDirectory("xterm-links");
+		File missing = new File(directory.toFile().getCanonicalFile(), ".netrc");
+		List<String> opened = new ArrayList<>();
+		XtermView view = open(new XtermView() {
+			@Override
+			void openFile(File file, int line, int column) {
+				opened.add(file.getName() + "@" + line + ":" + column);
+			}
+		});
+		run(view, "echo \"put it in " + shellPath(missing) + " now\"", "now");
+
+		awaitLink(view, shellPath(missing));
+		click(view, shellPath(missing), true);
+		await("file opened", () -> opened.size() == 1);
+		assertEquals(".netrc@0:0", opened.get(0));
+		assertFalse(missing.exists(), "opening it does not create it");
+		deleteTree(directory);
+	}
+
 	/**
 	 * Moves the mouse over the text until it is shown as a link: finding the directory of the shell
 	 * takes a while on macOS.
@@ -1625,6 +1646,22 @@ class XtermViewTest {
 		assertNull(XtermView.resolveFile(" ", directory));
 		assertNull(XtermView.resolveFile(null, directory));
 		assertNull(XtermView.resolveFile("~/no/such/file.txt", directory));
+		// a file that does not exist yet, in a directory that does: the editor opens it empty
+		File missing = new File(directory, "bin/.netrc");
+		assertEquals(missing, XtermView.resolveFile(missing.getPath(), null));
+		assertNull(XtermView.resolveFile("bin/.netrc", directory), "only an absolute path or one of the home directory");
+		assertNull(XtermView.resolveFile(new File(directory, "nodir/.netrc").getPath(), null));
+		assertNull(XtermView.resolveFile(new File(directory, "bin").getPath(), null), "a directory is not a file");
+		assertNull(XtermView.resolveFile("/help", null), "a word of the output, in the root");
+		Path dangling = Files.createSymbolicLink(new File(directory, "bin/dangling").toPath(), new File(directory, "bin/target").toPath());
+		assertNull(XtermView.resolveFile(dangling.toString(), null), "a link to nothing");
+		String home = System.getProperty("user.home");
+		System.setProperty("user.home", directory.getPath());
+		try {
+			assertEquals(new File(directory, ".netrc"), XtermView.resolveFile("~/.netrc", null));
+		} finally {
+			System.setProperty("user.home", home);
+		}
 		assertEquals("[null]", String.valueOf(view.browser.evaluate("return JSON.stringify(javaResolveFiles(['nothing.txt']))")));
 		assertEquals("[]", String.valueOf(view.browser.evaluate("return JSON.stringify(javaResolveFiles([]))")));
 		deleteTree(directory.toPath());
