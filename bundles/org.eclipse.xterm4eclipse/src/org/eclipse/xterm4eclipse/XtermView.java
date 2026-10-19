@@ -609,7 +609,9 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	 * @param path
 	 *            a path printed in the terminal, absolute, relative to the directory of the shell, to
 	 *            the root of its Git repository or to the home directory ({@code ~/...})
-	 * @return the file, or {@code null} if there is no such file
+	 * @return the file, or {@code null} if there is no such file. An absolute path, or one of the home
+	 *         directory, is also a file that does not exist yet when its directory exists, is not the root
+	 *         and can be written ({@code ~/.netrc}): the editor opens it empty.
 	 */
 	static File resolveFile(String path, File directory) {
 		if (path == null || path.isBlank()) {
@@ -620,7 +622,8 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			name = System.getProperty("user.home") + name.substring(1); //$NON-NLS-1$
 		}
 		File file = new File(name);
-		if (!file.isAbsolute()) {
+		boolean absolute = file.isAbsolute();
+		if (!absolute) {
 			if (directory == null) {
 				return null;
 			}
@@ -630,12 +633,19 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 				file = inRepository != null ? inRepository : file;
 			}
 		}
+		boolean link = Files.isSymbolicLink(file.toPath());
 		try {
 			file = file.getCanonicalFile();
 		} catch (IOException e) {
 			return null;
 		}
-		return file.isFile() ? file : null;
+		if (file.isFile()) {
+			return file;
+		}
+		// Not a dangling link, nor a word of the output such as /help, whose directory is the root.
+		File parent = file.getParentFile();
+		return absolute && !link && !file.exists() && parent != null && parent.getParentFile() != null && parent.isDirectory()
+				&& parent.canWrite() ? file : null;
 	}
 
 	/**
