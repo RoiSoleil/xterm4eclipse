@@ -22,7 +22,8 @@ TEST_BASH=$(command -v bash)
 case "$(uname -s)" in
 MINGW* | MSYS* | CYGWIN*)
 	SEP=';'
-	JAVA_OPTS=(-Dosgi.os=win32)
+	# A runner may take more than the 5 seconds that SWT gives Edge to create a browser.
+	JAVA_OPTS=(-Dosgi.os=win32 -Dorg.eclipse.swt.internal.win32.Edge.timeout=60000)
 	# Java does not understand the /c/... paths of Git Bash.
 	ECLIPSE_HOME=$(cygpath -m "$ECLIPSE_HOME")
 	TEST_BASH=$(cygpath -w "$TEST_BASH")
