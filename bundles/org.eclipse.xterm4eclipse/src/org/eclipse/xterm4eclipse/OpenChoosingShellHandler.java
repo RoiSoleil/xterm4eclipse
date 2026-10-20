@@ -7,6 +7,7 @@ import org.eclipse.core.commands.ExecutionEvent;
 import org.eclipse.core.commands.ExecutionException;
 import org.eclipse.jface.viewers.LabelProvider;
 import org.eclipse.jface.window.Window;
+import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.PartInitException;
@@ -41,12 +42,7 @@ public class OpenChoosingShellHandler extends AbstractHandler {
 
 	/** @return the shell the user chose, or {@code null} if the dialog was cancelled */
 	private static ShellProfiles.Profile choose(Shell parent, List<ShellProfiles.Profile> profiles) {
-		ElementListSelectionDialog dialog = new ElementListSelectionDialog(parent, new LabelProvider() {
-			@Override
-			public String getText(Object element) {
-				return ((ShellProfiles.Profile) element).name();
-			}
-		});
+		ElementListSelectionDialog dialog = new ElementListSelectionDialog(parent, new ProfileLabels());
 		dialog.setTitle("Xterm"); //$NON-NLS-1$
 		dialog.setMessage("Select the shell to open:"); //$NON-NLS-1$
 		dialog.setElements(profiles.toArray());
@@ -55,5 +51,19 @@ public class OpenChoosingShellHandler extends AbstractHandler {
 			dialog.setInitialSelections(profiles.get(0));
 		}
 		return dialog.open() == Window.OK ? (ShellProfiles.Profile) dialog.getFirstResult() : null;
+	}
+
+	/** The shells of the dialog: their name, and the icon they have in the menus. */
+	static final class ProfileLabels extends LabelProvider {
+
+		@Override
+		public String getText(Object element) {
+			return ((ShellProfiles.Profile) element).name();
+		}
+
+		@Override
+		public Image getImage(Object element) {
+			return XtermPlugin.image(((ShellProfiles.Profile) element).terminalIcon());
+		}
 	}
 }
