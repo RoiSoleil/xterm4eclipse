@@ -13,8 +13,11 @@
 	--deleted: rgba(248, 81, 73, 0.16);
 	--error: #c62828;
 	--link: #1a5fb4;
+	--scroll-thumb: rgba(0, 0, 0, 0.28);
+	--scroll-thumb-hover: rgba(0, 0, 0, 0.5);
 }
 body.dark {
+	color-scheme: dark;
 	--foreground: #d8d8d8;
 	--accent: #d97757;
 	--line: rgba(255, 255, 255, 0.14);
@@ -24,7 +27,17 @@ body.dark {
 	--deleted: rgba(248, 81, 73, 0.25);
 	--error: #f48771;
 	--link: #79b8ff;
+	--scroll-thumb: rgba(255, 255, 255, 0.25);
+	--scroll-thumb-hover: rgba(255, 255, 255, 0.45);
 }
+/* A thin scrollbar that follows the theme, without arrows: the system draws a wide one, with buttons. */
+* { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { min-height: 32px; border: 2px solid transparent; border-radius: 5px; background: var(--scroll-thumb);
+	background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); background-clip: padding-box; }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
 html, body { margin: 0; padding: 0; height: 100%; }
 body {
 	display: flex; flex-direction: column; overflow: hidden;

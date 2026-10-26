@@ -2022,6 +2022,12 @@ class XtermViewTest {
 		assertEquals(XtermView.CANCEL, view.promptToSaveOnClose(), "the user keeps the terminal");
 		assertEquals(XtermView.NO, view.promptToSaveOnClose(), "the user closes it anyway");
 		assertEquals(2, asked[0]);
+		assertFalse(view.isDirty(), "the user said so: not modified, so not in the list of the resources to save");
+		assertEquals(XtermView.NO, view.promptToSaveOnClose(), "not asked twice");
+		assertEquals(2, asked[0]);
+		// Back in the terminal, which still runs the command: closing it is asked again.
+		view.setFocus();
+		assertTrue(view.isDirty());
 		view.doSave(null);
 		view.doSaveAs();
 		assertTrue(view.isDirty(), "saving does not stop the command");

@@ -213,6 +213,8 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	private String pendingInput;
 	/** Moves the view to the editor area, or back to the views. */
 	private MoveToEditorAreaAction moveAction;
+	/** The user said to close the view although a command runs in it: it is not modified any more. */
+	private volatile boolean closeConfirmed;
 	private int cols = 80;
 	private int rows = 24;
 	private boolean keyFilterDisabled;
@@ -1244,11 +1246,14 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		}
 	}
 
-	/** @return {@code true} while a command runs in the foreground: closing the view would kill it */
+	/**
+	 * @return {@code true} while a command runs in the foreground: closing the view would kill it,
+	 *         unless the user already said to close it anyway
+	 */
 	@Override
 	public boolean isDirty() {
 		PtySession current = session;
-		return current != null && current.isBusy();
+		return !closeConfirmed && current != null && current.isBusy();
 	}
 
 	@Override
@@ -1261,7 +1266,13 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		if (!isDirty()) {
 			return NO;
 		}
-		return confirmClose() ? NO : CANCEL;
+		if (!confirmClose()) {
+			return CANCEL;
+		}
+		// The user said so: no other question (the list of the resources to save, on exit) about it.
+		closeConfirmed = true;
+		firePropertyChange(IWorkbenchPartConstants.PROP_DIRTY);
+		return NO;
 	}
 
 	/** Asks the user whether to close the view and kill the command that runs in it. */
@@ -2195,6 +2206,8 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 
 	@Override
 	public void setFocus() {
+		// The user is back in the terminal: closing it is a decision to take again.
+		closeConfirmed = false;
 		if (browser != null && !browser.isDisposed()) {
 			// The page gives the keyboard to the terminal when it receives the focus: running a script
 			// here would block the UI until the browser answers.

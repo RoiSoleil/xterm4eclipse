@@ -233,6 +233,18 @@ class ChatViewTest {
 	}
 
 	@Test
+	void scrollsWithAThinScrollbar() throws Exception {
+		ChatView view = open(null);
+		// Where the browser knows the property, the log has the thin scrollbar of the page, not the wide one of the system.
+		Object width = view.browser.evaluate("return CSS.supports('scrollbar-width', 'thin') "
+				+ "? getComputedStyle(document.getElementById('log')).scrollbarWidth : 'unsupported'");
+		assertTrue("thin".equals(width) || "unsupported".equals(width), String.valueOf(width));
+		Object color = view.browser.evaluate("return CSS.supports('scrollbar-color', 'red blue') "
+				+ "? getComputedStyle(document.getElementById('log')).scrollbarColor : 'unsupported'");
+		assertNotEquals("auto", color, "a color that follows the theme");
+	}
+
+	@Test
 	void givesTheMcpServerOfEclipseToClaudeCode() throws Exception {
 		EclipseMcpConfig.server = () -> new org.eclipse.xterm4eclipse.harness.EclipseMcp.Endpoint("http://127.0.0.1:8642/mcp", "token-1234567890");
 		EclipseMcpConfig.known = (endpoint, directory) -> false;
