@@ -19,8 +19,8 @@ https://github.com/RoiSoleil/xterm4eclipse/raw/update-site/latest/
 
 It holds two features: **Xterm4Eclipse**, the terminal, and **Xterm4Eclipse Coding Agents
 (optional)**, what the terminal knows about [the coding agents](#coding-agents-optional) (Claude Code,
-Codex, OpenCode, Reasonix...). The terminal works without the second one: leave it unchecked if you do
-not want it.
+Codex, OpenCode, Reasonix...) and the [Claude Code Chat](#claude-code-chat) view. The terminal works
+without the second one: leave it unchecked if you do not want it.
 
 # Features
 
@@ -134,6 +134,40 @@ lines are those of the versions of October 2026 (Claude Code 2.1, Codex 0.162, O
 Reasonix 2.37, Gemini CLI 0.63, Copilot CLI 1.0, Qwen Code 0.25, Kilo Code 7.8, Crush 0.98,
 goose 1.54).
 
+# Claude Code Chat
+
+A view that talks with [Claude Code](https://claude.com/claude-code) as the Code tab of Claude Desktop
+does, in the same feature as the coding agents (plug-in `org.eclipse.xterm4eclipse.claude`): *Window >
+Show View > Xterm > Claude Code Chat*, the menu *Claude*, the tool bar or Ctrl+Alt+Shift+C. It is not
+Claude Desktop: it runs the `claude` program of the computer, which must be installed and logged in.
+
+- One conversation per view, in the project of the selection (or of the active editor). Its messages in
+  Markdown, its tools in cards that open (the change of an Edit, the command of a Bash, the tasks of a
+  TodoWrite...), the text as it comes.
+- Claude Code asks the view before it uses a tool, unless its permission mode allows it: *Allow*, *Allow
+  All Edits* or *Always Allow* (what Claude Code suggests, for the conversation) or *Deny*. The mode
+  (*Ask before edits*, *Accept edits*, *Plan mode*) and the model are chosen below the message, also
+  while Claude Code works.
+- Enter sends, Shift+Enter starts a new line, Escape or *Stop* interrupts Claude Code. `@file` mentions
+  a file, as in the CLI.
+- *Compare* on the card of an Edit or a Write shows the change in the compare editor of Eclipse; a file
+  path in a message (`src/Foo.java:12`) opens in an editor; the workspace is refreshed after the changes.
+- *Ask Claude Code* (context menu of the editors and of the resources, Ctrl+Alt+Shift+K in an editor)
+  adds the selected lines (`@src/Foo.java#L10-20`) or files to the message of the last chat.
+- The conversations are those of the CLI and of Claude Desktop (`~/.claude/projects`): *Resume a
+  Conversation...* lists those of the project, and a chat that Eclipse reopens shows its messages and
+  goes on with it (`claude --resume`). A conversation of the chat can be resumed in a terminal the same
+  way.
+- *Window > Preferences > Xterm Terminal > Claude Code Chat*: the program of Claude Code (else `claude`
+  on the PATH or where its installer puts it), the model and the permission mode of new chats, more
+  arguments, and whether a new chat continues the last conversation of its project.
+
+Claude Code runs beside the view (`claude -p --input-format stream-json --output-format stream-json
+--permission-prompt-tool stdio`), through the login shell of the user on Unix as in the terminal; the
+view answers its requests for permissions on its input. The page of the view shows only its own
+content: the messages are text, their links open in the browser of the system (http and https), their
+files in Eclipse.
+
 Another plug-in can teach the terminal other programs through the extension point
 `org.eclipse.xterm4eclipse.terminalExtensions` (package `org.eclipse.xterm4eclipse.spi`): entries in
 the menus, icons, and a say in how its program starts in a terminal and comes back.
@@ -148,8 +182,8 @@ mvn clean install   # update site in update-site/org.eclipse.xterm4eclipse/targe
 ```
 
 The terminal is the plug-in `bundles/org.eclipse.xterm4eclipse`; the coding agents are in
-`bundles/org.eclipse.xterm4eclipse.harness`, which only depends on the first one, with a feature of
-its own.
+`bundles/org.eclipse.xterm4eclipse.harness`, which only depends on the first one, and the chat in
+`bundles/org.eclipse.xterm4eclipse.claude`, which depends on neither, both in a feature of their own.
 
 Every push to `main` is built by GitHub Actions, which publishes the update site to the
 `update-site` branch and a zipped copy to the `latest` release.
@@ -164,7 +198,8 @@ export ECLIPSE_HOME=/path/to/eclipse   # macOS: /Applications/Eclipse.app/Conten
 ```
 
 `test.sh` tests the terminal without the plug-in of the coding agents first, then the agents, each
-with a stand-in for its program (`TESTS=terminal` or `TESTS=harness` for one of them only). The icons
+with a stand-in for its program, then the chat, with a stand-in for Claude Code that replays its
+messages (`TESTS=terminal`, `TESTS=harness` or `TESTS=claude` for one of them only). The icons
 of the agents are drawn by `java tools/MakeHarnessIcons.java bundles/org.eclipse.xterm4eclipse.harness/icons`.
 
 xterm.js and its addons are copied to `bundles/org.eclipse.xterm4eclipse/web` from the npm packages

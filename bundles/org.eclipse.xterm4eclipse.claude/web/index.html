@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<!-- Only the scripts and styles of this file: the messages are text, never code of the page. The
+     functions of Java are called through the scheme swt: with WebKitGTK. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src swt:">
+<link rel="stylesheet" href="chat.css">
+</head>
+<body>
+<div id="log" role="log" aria-live="polite"></div>
+<div id="composer">
+<div id="working"><span class="spinner"></span><span id="working-text">Claude Code is working&#8230;</span></div>
+<textarea id="input" rows="2" spellcheck="true"
+	placeholder="Message Claude Code (Enter to send, Shift+Enter for a new line, @file to mention a file)"></textarea>
+<div id="bar">
+<select id="model" title="Model"></select>
+<select id="mode" title="Permissions"></select>
+<span id="usage"></span>
+<button id="stop" title="Stop (Escape)">Stop</button>
+<button id="send" title="Send (Enter)">Send</button>
+</div>
+</div>
+<script>
+window.addEventListener("error", function (e) {
+	var pre = document.createElement("pre");
+	pre.className = "page-error";
+	pre.textContent = "Claude Code Chat error: " + e.message + " (" + (e.filename || "").split("/").pop() + ":" + e.lineno + ")";
+	document.body.appendChild(pre);
+});
+</script>
+<script src="markdown.js"></script>
+<script src="chat.js"></script>
+</body>
+</html>

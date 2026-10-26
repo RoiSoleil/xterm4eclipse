@@ -12,6 +12,7 @@
 	<modules>
 		<module>bundles/org.eclipse.xterm4eclipse</module>
 		<module>bundles/org.eclipse.xterm4eclipse.harness</module>
+		<module>bundles/org.eclipse.xterm4eclipse.claude</module>
 		<module>features/org.eclipse.xterm4eclipse</module>
 		<module>features/org.eclipse.xterm4eclipse.harness</module>
 		<module>update-site/org.eclipse.xterm4eclipse</module>

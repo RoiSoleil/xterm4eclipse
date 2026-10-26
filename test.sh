@@ -7,6 +7,8 @@ cd "$(dirname "$0")"
 BUNDLE=bundles/org.eclipse.xterm4eclipse
 # The optional plug-in of the coding agents: the terminal is tested without it first.
 HARNESS=bundles/org.eclipse.xterm4eclipse.harness
+# The chat with Claude Code, in the same feature.
+CLAUDE=bundles/org.eclipse.xterm4eclipse.claude
 : "${ECLIPSE_HOME:?Set ECLIPSE_HOME to your Eclipse installation directory}"
 MIN_COVERAGE=85
 JACOCO=0.8.15
@@ -43,7 +45,8 @@ fetch "org/jacoco/org.jacoco.cli/$JACOCO/org.jacoco.cli-$JACOCO-nodeps.jar"
 fetch "org/junit/platform/junit-platform-console-standalone/$JUNIT/junit-platform-console-standalone-$JUNIT.jar"
 CONSOLE=".cache/junit-platform-console-standalone-$JUNIT.jar"
 
-rm -rf build && mkdir -p build/classes build/test-classes build/harness-classes build/harness-test-classes build/natives
+rm -rf build && mkdir -p build/classes build/test-classes build/harness-classes build/harness-test-classes \
+	build/claude-classes build/claude-test-classes build/natives
 # Eclipse ships its own JUnit bundles: keep them off the class path, the console brings JUnit.
 # JNA, which the PTY of CDT uses on Windows, is a bundle folder.
 ECLIPSE_CP=$( (find "$ECLIPSE_HOME/plugins" -maxdepth 1 -name '*.jar'; find "$ECLIPSE_HOME/plugins" -maxdepth 1 -type d -name 'com.sun.jna*') |
@@ -86,11 +89,20 @@ classpath "build/harness-classes$SEP$CORE_CP" > build/harness-test.args
 find $HARNESS/test -name '*.java' >> build/harness-test.args
 # Its folder gives its icons and tells the terminal about it (META-INF/services), as plugin.xml does in Eclipse.
 classpath "build/harness-classes${SEP}build/harness-test-classes$SEP$HARNESS$SEP$CORE_CP" > build/harness-run.args
+# The chat, and its tests, which use the fakes of the tests of the terminal.
+classpath "$ECLIPSE_CP" > build/claude-main.args
+find $CLAUDE/src -name '*.java' >> build/claude-main.args
+classpath "build/claude-classes$SEP$CORE_CP" > build/claude-test.args
+find $CLAUDE/test -name '*.java' >> build/claude-test.args
+# Its folder gives its page (web/), as in the plug-in jar.
+classpath "build/claude-classes${SEP}build/claude-test-classes$SEP$CLAUDE$SEP$CORE_CP" > build/claude-run.args
 
 javac --release 21 -nowarn -encoding UTF-8 -g -d build/classes @build/main.args
 javac --release 21 -nowarn -encoding UTF-8 -d build/test-classes @build/test.args
 javac --release 21 -nowarn -encoding UTF-8 -g -d build/harness-classes @build/harness-main.args
 javac --release 21 -nowarn -encoding UTF-8 -d build/harness-test-classes @build/harness-test.args
+javac --release 21 -nowarn -encoding UTF-8 -g -d build/claude-classes @build/claude-main.args
+javac --release 21 -nowarn -encoding UTF-8 -d build/claude-test-classes @build/claude-test.args
 
 STATUS=0
 # ${@+"$@"}: no arguments is not an error for the bash 3 of macOS.
@@ -105,17 +117,20 @@ run_tests() {
 		--config 'junit.jupiter.testclass.order.default=org.junit.jupiter.api.ClassOrderer$ClassName' \
 		--details=tree --disable-banner ${@+"$@"} || STATUS=$?
 }
-# TESTS=terminal or TESTS=harness runs the tests of one plug-in only.
+# TESTS=terminal, TESTS=harness or TESTS=claude runs the tests of one plug-in only.
 case "${TESTS:-all}" in
 all | terminal) run_tests build/run.args build/test-classes ${@+"$@"} ;;
 esac
 case "${TESTS:-all}" in
 all | harness) run_tests build/harness-run.args build/harness-test-classes ${@+"$@"} ;;
 esac
+case "${TESTS:-all}" in
+all | claude) run_tests build/claude-run.args build/claude-test-classes ${@+"$@"} ;;
+esac
 
 java -jar ".cache/org.jacoco.cli-$JACOCO-nodeps.jar" report build/jacoco.exec \
-	--classfiles build/classes --classfiles build/harness-classes \
-	--sourcefiles $BUNDLE/src --sourcefiles $HARNESS/src \
+	--classfiles build/classes --classfiles build/harness-classes --classfiles build/claude-classes \
+	--sourcefiles $BUNDLE/src --sourcefiles $HARNESS/src --sourcefiles $CLAUDE/src \
 	--csv build/coverage.csv --xml build/coverage.xml --html build/coverage >/dev/null
 awk -F, -v min="$MIN_COVERAGE" 'NR > 1 { missed += $8; covered += $9; printf "  %-28s %5.1f%%\n", $3, 100 * $9 / ($8 + $9) }
 	END { total = 100 * covered / (missed + covered); printf "Line coverage: %.1f%% (minimum %d%%), report in build/coverage/index.html\n", total, min; exit total < min }' \
