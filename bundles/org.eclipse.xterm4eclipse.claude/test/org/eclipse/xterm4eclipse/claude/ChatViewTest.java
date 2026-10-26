@@ -95,6 +95,9 @@ class ChatViewTest {
 		log = temp.resolve("log");
 		previousHome = Conversations.userHome;
 		previousEnvironment = ClaudeCommand.environment;
+		previousMcpServer = EclipseMcpConfig.server;
+		previousMcpKnown = EclipseMcpConfig.known;
+		EclipseMcpConfig.server = () -> null; // the MCP server of the Eclipse that runs the tests, if any, is not for the chats of the tests
 		previousOpener = ChatView.opener;
 		Conversations.userHome = temp.resolve("home");
 		// No login shell: the stand-in runs as it is.
@@ -135,12 +138,18 @@ class ChatViewTest {
 		TestWorkbench.pump(100);
 		Conversations.userHome = previousHome;
 		ClaudeCommand.environment = previousEnvironment;
+		EclipseMcpConfig.server = previousMcpServer;
+		EclipseMcpConfig.known = previousMcpKnown;
+		ChatPlugin.preferences().setToDefault(ChatPlugin.PREF_ECLIPSE_MCP);
 		ChatView.opener = previousOpener;
 		for (String key : List.of(ChatPlugin.PREF_PROGRAM, ChatPlugin.PREF_MODEL, ChatPlugin.PREF_PERMISSION_MODE,
 				ChatPlugin.PREF_ARGUMENTS, ChatPlugin.PREF_CONTINUE_LAST)) {
 			ChatPlugin.preferences().setToDefault(key);
 		}
 	}
+
+	private java.util.function.Supplier<org.eclipse.xterm4eclipse.harness.EclipseMcp.Endpoint> previousMcpServer;
+	private java.util.function.BiPredicate<org.eclipse.xterm4eclipse.harness.EclipseMcp.Endpoint, File> previousMcpKnown;
 
 	/** The toolbar of the last view that was created. */
 	private ToolBarManager lastToolBar;
@@ -220,6 +229,29 @@ class ChatViewTest {
 
 	private List<String> read() throws Exception {
 		return FakeClaude.lines(log);
+	}
+
+	@Test
+	void givesTheMcpServerOfEclipseToClaudeCode() throws Exception {
+		EclipseMcpConfig.server = () -> new org.eclipse.xterm4eclipse.harness.EclipseMcp.Endpoint("http://127.0.0.1:8642/mcp", "token-1234567890");
+		EclipseMcpConfig.known = (endpoint, directory) -> false;
+		ChatView view = open(null);
+		say(view, "hello");
+		// Read as soon as Claude Code has started: the chat deletes the file when it ends.
+		await("the arguments of Claude Code", () -> {
+			try {
+				return !read().isEmpty();
+			} catch (Exception e) {
+				return false;
+			}
+		});
+		String arguments = read().get(0);
+		int at = arguments.indexOf("--mcp-config ");
+		assertTrue(at > 0, arguments);
+		// The last argument, which is the only one that the chat of the tests gives.
+		Path file = Path.of(arguments.substring(at + "--mcp-config ".length()).strip());
+		assertTrue(Files.readString(file).contains("token-1234567890"), "for this conversation: the server of Eclipse");
+		awaitText(view, "Hello world, see a.txt:2");
 	}
 
 	@Test

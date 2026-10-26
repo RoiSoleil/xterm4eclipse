@@ -90,12 +90,12 @@ find $HARNESS/test -name '*.java' >> build/harness-test.args
 # Its folder gives its icons and tells the terminal about it (META-INF/services), as plugin.xml does in Eclipse.
 classpath "build/harness-classes${SEP}build/harness-test-classes$SEP$HARNESS$SEP$CORE_CP" > build/harness-run.args
 # The chat, and its tests, which use the fakes of the tests of the terminal.
-classpath "build/classes$SEP$ECLIPSE_CP" > build/claude-main.args
+classpath "build/classes${SEP}build/harness-classes$SEP$ECLIPSE_CP" > build/claude-main.args
 find $CLAUDE/src -name '*.java' >> build/claude-main.args
-classpath "build/claude-classes$SEP$CORE_CP" > build/claude-test.args
+classpath "build/claude-classes${SEP}build/harness-classes$SEP$CORE_CP" > build/claude-test.args
 find $CLAUDE/test -name '*.java' >> build/claude-test.args
 # Its folder gives its page (web/), as in the plug-in jar.
-classpath "build/claude-classes${SEP}build/claude-test-classes$SEP$CLAUDE$SEP$CORE_CP" > build/claude-run.args
+classpath "build/claude-classes${SEP}build/claude-test-classes${SEP}build/harness-classes$SEP$CLAUDE$SEP$CORE_CP" > build/claude-run.args
 
 javac --release 21 -nowarn -encoding UTF-8 -g -d build/classes @build/main.args
 javac --release 21 -nowarn -encoding UTF-8 -d build/test-classes @build/test.args

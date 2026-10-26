@@ -22,10 +22,10 @@ import org.eclipse.osgi.service.datalocation.Location;
  * which gives a coding agent the projects, problems, debugger... of the running Eclipse. When it
  * runs, a new terminal of an agent offers to add it to the agent.
  */
-final class EclipseMcp {
+public final class EclipseMcp {
 
 	/** The name of the server in the agents: it tells who added it. Claude Code allows no space in it. */
-	static final String NAME = "eclipse-mcp-server-via-xterm4eclipse"; //$NON-NLS-1$
+	public static final String NAME = "eclipse-mcp-server-via-xterm4eclipse"; //$NON-NLS-1$
 	/**
 	 * The variable in which the terminals give the token of the server to the agents that do not
 	 * keep it in their files (Codex).
@@ -38,7 +38,7 @@ final class EclipseMcp {
 	private static final Pattern TOKEN = Pattern.compile("[A-Za-z0-9._-]{8,256}"); //$NON-NLS-1$
 
 	/** The running server: where it listens, and the token that it requires. */
-	record Endpoint(String url, String token) {
+	public record Endpoint(String url, String token) {
 	}
 
 	/** The folder of the workspace; a test may change it. */
@@ -61,7 +61,7 @@ final class EclipseMcp {
 	}
 
 	/** @return the server if it runs in this Eclipse and answers, or {@code null} */
-	static Endpoint running() {
+	public static Endpoint running() {
 		Path folder = workspace();
 		if (folder == null) {
 			return null;
@@ -96,6 +96,15 @@ final class EclipseMcp {
 	private static String field(String json, String name) {
 		Matcher matcher = Pattern.compile("\"" + name + "\"\\s*:\\s*\"([^\"\\\\]*)\"").matcher(json); //$NON-NLS-1$ //$NON-NLS-2$
 		return matcher.find() ? matcher.group(1) : null;
+	}
+
+	/**
+	 * @param directory
+	 *            where Claude Code starts, for the servers of its project
+	 * @return {@code true} if Claude Code already knows the server: of the user or of the project
+	 */
+	public static boolean claudeKnows(Endpoint endpoint, File directory) {
+		return configured(Harnesses.CLAUDE.mcp(), endpoint, directory);
 	}
 
 	/**

@@ -160,9 +160,15 @@ Claude Desktop: it runs the `claude` program of the computer, which must be inst
   (`claude --resume`). A conversation of the chat can be resumed in a terminal the same way, and the
   tool bar of the terminal view, like the menu *Claude*, has *Resume a Conversation in a Terminal...*:
   the same list, and `claude --resume` runs in a new terminal in the project.
+- When the MCP server of Eclipse runs (https://github.com/vogellacompany/eclipse-mcp-server), a chat
+  gives it to Claude Code at once, for this conversation only (`--mcp-config` with a file of the user
+  that is deleted when Claude Code ends): its projects, problems, launches... No question is asked and
+  nothing is added to the configuration of the user, unlike the terminals of the coding agents. A chat
+  does not give it if Claude Code already has it in its configuration.
 - *Window > Preferences > Xterm Terminal > Claude Code Chat*: the program of Claude Code (else `claude`
   on the PATH or where its installer puts it), the model and the permission mode of new chats, more
-  arguments, and whether a new chat continues the last conversation of its project.
+  arguments, whether a new chat continues the last conversation of its project, and whether a chat
+  connects Claude Code to the MCP server of Eclipse.
 
 Claude Code runs beside the view (`claude -p --input-format stream-json --output-format stream-json
 --permission-prompt-tool stdio`), through the login shell of the user on Unix as in the terminal; the

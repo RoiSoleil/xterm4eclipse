@@ -57,6 +57,16 @@ class ClaudeCommandTest {
 	}
 
 	@Test
+	void givesTheMcpServersOfTheConversationOnly() {
+		assertEquals(with("--session-id", ID, "--mcp-config", "/tmp/mcp.json"),
+				ClaudeCommand.arguments(ID, false, "", "default", "", "/tmp/mcp.json"));
+		assertEquals(with("--session-id", ID), ClaudeCommand.arguments(ID, false, "", "default", "", null), "none to give");
+		// After the arguments of the user: the option takes all the values that follow it.
+		assertEquals(with("--session-id", ID, "--add-dir", "/tmp/x", "--mcp-config", "/tmp/mcp.json"),
+				ClaudeCommand.arguments(ID, false, "", "default", "--add-dir /tmp/x", "/tmp/mcp.json"));
+	}
+
+	@Test
 	void startsOrResumesTheConversationOfTheChat() {
 		assertEquals(with("--session-id", ID), ClaudeCommand.arguments(ID, false, "", "default", ""));
 		assertEquals(with("--resume", ID), ClaudeCommand.arguments(ID, true, null, null, null));

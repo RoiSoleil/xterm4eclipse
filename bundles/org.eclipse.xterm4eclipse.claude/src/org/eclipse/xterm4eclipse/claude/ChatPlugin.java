@@ -33,6 +33,8 @@ final class ChatPlugin {
 	static final String PREF_ARGUMENTS = "arguments"; //$NON-NLS-1$
 	/** A new chat continues the last conversation of its folder, if there is one. */
 	static final String PREF_CONTINUE_LAST = "continueLast"; //$NON-NLS-1$
+	/** Whether a chat gives Claude Code the MCP server of Eclipse, when it runs. */
+	static final String PREF_ECLIPSE_MCP = "eclipseMcp"; //$NON-NLS-1$
 
 	private static final Bundle BUNDLE = FrameworkUtil.getBundle(ChatPlugin.class);
 	private static IPreferenceStore preferences;
@@ -48,6 +50,7 @@ final class ChatPlugin {
 			preferences.setDefault(PREF_PERMISSION_MODE, ClaudeCommand.DEFAULT_MODE);
 			preferences.setDefault(PREF_ARGUMENTS, ""); //$NON-NLS-1$
 			preferences.setDefault(PREF_CONTINUE_LAST, false);
+			preferences.setDefault(PREF_ECLIPSE_MCP, true);
 		}
 		return preferences;
 	}

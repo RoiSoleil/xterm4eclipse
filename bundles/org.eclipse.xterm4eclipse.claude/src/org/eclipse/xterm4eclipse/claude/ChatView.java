@@ -456,8 +456,16 @@ public class ChatView extends ViewPart {
 		}
 		// Resumed if Claude Code has kept it: it keeps nothing before the first message.
 		boolean resume = Conversations.exists(directory, sessionId);
-		List<String> command = ClaudeCommand.commandLine(program, ClaudeCommand.arguments(sessionId, resume, model, mode,
-				ChatPlugin.preference(ChatPlugin.PREF_ARGUMENTS)));
+		// The MCP server of Eclipse, for this conversation only.
+		Path mcpConfig = EclipseMcpConfig.write(directory);
+		List<String> command;
+		try {
+			command = ClaudeCommand.commandLine(program, ClaudeCommand.arguments(sessionId, resume, model, mode,
+					ChatPlugin.preference(ChatPlugin.PREF_ARGUMENTS), mcpConfig == null ? null : mcpConfig.toString()));
+		} catch (RuntimeException e) {
+			EclipseMcpConfig.delete(mcpConfig);
+			throw e;
+		}
 		ClaudeProcess[] started = new ClaudeProcess[1];
 		try {
 			started[0] = ClaudeProcess.start(command, directory, new ClaudeProcess.Listener() {
@@ -468,10 +476,15 @@ public class ChatView extends ViewPart {
 
 				@Override
 				public void exited(int exitCode, String errors) {
+					EclipseMcpConfig.delete(mcpConfig);
 					ChatPlugin.later(display, () -> ended(started[0], exitCode, errors));
 				}
 			});
+		} catch (RuntimeException e) {
+			EclipseMcpConfig.delete(mcpConfig);
+			throw e;
 		} catch (IOException e) {
+			EclipseMcpConfig.delete(mcpConfig);
 			ChatPlugin.log("Could not start Claude Code", e); //$NON-NLS-1$
 			post(notice("error", "Could not start Claude Code: " + e.getMessage())); //$NON-NLS-1$ //$NON-NLS-2$
 			return false;

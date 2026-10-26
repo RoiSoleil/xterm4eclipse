@@ -50,5 +50,7 @@ public class ChatPreferencePage extends FieldEditorPreferencePage implements IWo
 		addField(new StringFieldEditor(ChatPlugin.PREF_ARGUMENTS, "More &arguments:", getFieldEditorParent())); //$NON-NLS-1$
 		addField(new BooleanFieldEditor(ChatPlugin.PREF_CONTINUE_LAST,
 				"A new chat &continues the last conversation of its project", getFieldEditorParent())); //$NON-NLS-1$
+		addField(new BooleanFieldEditor(ChatPlugin.PREF_ECLIPSE_MCP,
+				"Connect Claude Code to the MCP server of &Eclipse when it runs", getFieldEditorParent())); //$NON-NLS-1$
 	}
 }

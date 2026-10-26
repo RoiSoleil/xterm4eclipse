@@ -62,6 +62,15 @@ final class ClaudeCommand {
 	 * @return the arguments of the program
 	 */
 	static List<String> arguments(String sessionId, boolean resume, String model, String mode, String more) {
+		return arguments(sessionId, resume, model, mode, more, null);
+	}
+
+	/**
+	 * @param mcpConfig
+	 *            the file of the MCP servers that only this conversation uses, or {@code null}
+	 * @see #arguments(String, boolean, String, String, String)
+	 */
+	static List<String> arguments(String sessionId, boolean resume, String model, String mode, String more, String mcpConfig) {
 		if (!SESSION_ID.matcher(sessionId).matches()) {
 			throw new IllegalArgumentException("Not an id of conversation: " + sessionId); //$NON-NLS-1$
 		}
@@ -78,6 +87,11 @@ final class ClaudeCommand {
 			arguments.add(mode);
 		}
 		arguments.addAll(more(more));
+		if (mcpConfig != null) {
+			// Last: the option takes all the values that follow it, which must not be arguments of the user.
+			arguments.add("--mcp-config"); //$NON-NLS-1$
+			arguments.add(mcpConfig);
+		}
 		return arguments;
 	}
 
