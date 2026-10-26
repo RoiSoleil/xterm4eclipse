@@ -607,7 +607,11 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		return true;
 	}
 
-	/** @return where the shell is now, as far as it is known */
+	/**
+	 * @return where the shell is now, as far as it is known: the directory of its process where the
+	 *         system tells it (Linux, macOS), else the one that the shell announced, else the one it
+	 *         started in
+	 */
 	public File currentDirectory() {
 		PtySession current = session;
 		File directory = current != null ? current.currentDirectory() : null;

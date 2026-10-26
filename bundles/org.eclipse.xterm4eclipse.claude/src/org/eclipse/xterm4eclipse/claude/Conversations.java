@@ -101,25 +101,37 @@ final class Conversations {
 	}
 
 	/**
-	 * @return the title of a conversation: the one given to it, or else its first message; or
-	 *         {@code null} if the user has said nothing in it
+	 * @return the title of a conversation, as Claude Code lists it: the one that the user gave it
+	 *         (/rename), else the one that Claude Code made of it, else its summary, else its first
+	 *         message; or {@code null} if the user has said nothing in it. A conversation repeats its
+	 *         titles as it goes on: the last one is the title.
 	 */
 	static String title(Path file) {
-		String given = null;
+		String custom = null;
+		String generated = null;
+		String summary = null;
 		String first = null;
 		try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
 			String line;
 			while ((line = reader.readLine()) != null) {
 				// Most lines are not of interest: not read as JSON.
-				if (line.contains("\"custom-title\"") || line.contains("\"summary\"")) { //$NON-NLS-1$ //$NON-NLS-2$
+				if (line.contains("\"custom-title\"") || line.contains("\"ai-title\"") || line.contains("\"summary\"")) { //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 					Map<String, Object> entry = Json.object(line);
 					String type = Json.string(entry, "type"); //$NON-NLS-1$
-					String title = "custom-title".equals(type) ? Json.string(entry, "customTitle") //$NON-NLS-1$ //$NON-NLS-2$
-							: "summary".equals(type) ? Json.string(entry, "summary") : null; //$NON-NLS-1$ //$NON-NLS-2$
-					if (title != null && !title.isBlank() && (given == null || "custom-title".equals(type))) { //$NON-NLS-1$
-						given = title;
+					if ("custom-title".equals(type)) { //$NON-NLS-1$
+						// An empty one is the name taken away.
+						custom = notBlank(Json.string(entry, "customTitle")) ? Json.string(entry, "customTitle") : null; //$NON-NLS-1$ //$NON-NLS-2$
+						continue;
+					} else if ("ai-title".equals(type)) { //$NON-NLS-1$
+						generated = notBlank(Json.string(entry, "aiTitle")) ? Json.string(entry, "aiTitle") : generated; //$NON-NLS-1$ //$NON-NLS-2$
+						continue;
+					} else if ("summary".equals(type)) { //$NON-NLS-1$
+						summary = notBlank(Json.string(entry, "summary")) ? Json.string(entry, "summary") : summary; //$NON-NLS-1$ //$NON-NLS-2$
+						continue;
 					}
-				} else if (first == null && line.contains("\"type\":\"user\"")) { //$NON-NLS-1$
+					// Another entry that mentions one of these words: maybe what the user said.
+				}
+				if (first == null && line.contains("\"type\":\"user\"")) { //$NON-NLS-1$
 					Map<String, Object> entry = Json.object(line);
 					String text = entry == null ? null : userText(entry);
 					if (text != null) {
@@ -130,12 +142,16 @@ final class Conversations {
 		} catch (IOException | RuntimeException e) {
 			// What could be read.
 		}
-		String title = given != null ? given : first;
+		String title = custom != null ? custom : generated != null ? generated : summary != null ? summary : first;
 		if (title == null) {
 			return null;
 		}
 		title = title.strip().replaceAll("\\s+", " "); //$NON-NLS-1$ //$NON-NLS-2$
 		return title.length() > TITLE_LENGTH ? title.substring(0, TITLE_LENGTH) + '…' : title;
+	}
+
+	private static boolean notBlank(String text) {
+		return text != null && !text.isBlank();
 	}
 
 	/** @return what the user wrote in an entry, or {@code null} if it is something else */

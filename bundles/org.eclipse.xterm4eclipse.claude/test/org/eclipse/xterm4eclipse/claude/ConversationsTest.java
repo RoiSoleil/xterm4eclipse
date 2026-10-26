@@ -86,6 +86,42 @@ class ConversationsTest {
 	}
 
 	@Test
+	void titlesAConversationAsClaudeCodeDoes() throws Exception {
+		Path folder = folder();
+		String said = "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"first words\"}}\n";
+		Path generated = folder.resolve(ID + ".jsonl");
+		// Claude Code repeats its title as the conversation goes on: the last one.
+		Files.writeString(generated, said + "{\"type\":\"ai-title\",\"aiTitle\":\"Old title\"}\n" + said
+				+ "{\"type\":\"ai-title\",\"aiTitle\":\"Latest title\"}\n{\"type\":\"last-prompt\",\"lastPrompt\":\"x\"}\n");
+		assertEquals("Latest title", Conversations.title(generated), "not the first words");
+
+		Path renamed = folder.resolve(OTHER + ".jsonl");
+		Files.writeString(renamed, said + "{\"type\":\"ai-title\",\"aiTitle\":\"Made by Claude\"}\n"
+				+ "{\"type\":\"custom-title\",\"customTitle\":\"Named by me\"}\n"
+				+ "{\"type\":\"ai-title\",\"aiTitle\":\"Made later\"}\n");
+		assertEquals("Named by me", Conversations.title(renamed), "what the user gave wins");
+
+		Path summary = folder.resolve("3a2b3c4d-0000-4000-8000-000000000003.jsonl");
+		Files.writeString(summary, said + "{\"type\":\"summary\",\"summary\":\"A summary\"}\n");
+		assertEquals("A summary", Conversations.title(summary));
+		Files.writeString(summary, said + "{\"type\":\"summary\",\"summary\":\"A summary\"}\n{\"type\":\"ai-title\",\"aiTitle\":\" \"}\n");
+		assertEquals("A summary", Conversations.title(summary), "a blank title is none");
+
+		// A message of the user that has the words of the titles is still the first message.
+		Path words = folder.resolve("4a2b3c4d-0000-4000-8000-000000000004.jsonl");
+		Files.writeString(words, "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"give me a summary of ai-title\"}}\n");
+		assertEquals("give me a summary of ai-title", Conversations.title(words));
+
+		// The name taken away: the title that Claude Code made is back; the last summary is the one.
+		Path taken = folder.resolve("5a2b3c4d-0000-4000-8000-000000000005.jsonl");
+		Files.writeString(taken, said + "{\"type\":\"custom-title\",\"customTitle\":\"Named\"}\n{\"type\":\"ai-title\",\"aiTitle\":\"Made\"}\n"
+				+ "{\"type\":\"custom-title\",\"customTitle\":\"\"}\n");
+		assertEquals("Made", Conversations.title(taken));
+		Files.writeString(taken, said + "{\"type\":\"summary\",\"summary\":\"One\"}\n{\"type\":\"summary\",\"summary\":\"Two\"}\n");
+		assertEquals("Two", Conversations.title(taken));
+	}
+
+	@Test
 	void findsTheConversationsOfTheProject() throws Exception {
 		assertTrue(Conversations.list(project).isEmpty(), "none yet");
 		assertFalse(Conversations.exists(project, ID));
