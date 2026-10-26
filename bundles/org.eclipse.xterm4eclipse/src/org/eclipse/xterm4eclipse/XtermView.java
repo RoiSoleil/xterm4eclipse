@@ -664,7 +664,9 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	 * @return the folder, or {@code null} if there is no such folder, or it is the root of a disk
 	 */
 	static File resolveFolder(String path, File directory) {
-		if (path == null || path.isBlank()) {
+		// Only separators: the root, a word of the output (/) more often than a folder to open; on
+		// Windows it is not absolute, and would be the directory of the shell.
+		if (path == null || path.replaceAll("[\\\\/]", "").isBlank()) { //$NON-NLS-1$ //$NON-NLS-2$
 			return null;
 		}
 		String name = path;
@@ -687,7 +689,6 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		} catch (IOException e) {
 			return null;
 		}
-		// The root is a word of the output (/) more often than a folder to open.
 		return folder.isDirectory() && folder.getParentFile() != null ? folder : null;
 	}
 

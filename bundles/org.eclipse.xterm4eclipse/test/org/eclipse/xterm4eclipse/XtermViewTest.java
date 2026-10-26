@@ -1592,6 +1592,7 @@ class XtermViewTest {
 		assertNull(XtermView.resolveFolder("build/missing/", directory));
 		assertNull(XtermView.resolveFolder("build", null), "relative, without the directory of the shell");
 		assertNull(XtermView.resolveFolder("/", directory), "the root is a word of the output");
+		assertNull(XtermView.resolveFolder("\\", directory), "not the directory of the shell on Windows either");
 		assertNull(XtermView.resolveFolder(" ", directory));
 		assertNull(XtermView.resolveFolder(null, directory));
 		// from the root of the Git repository, as git prints them
