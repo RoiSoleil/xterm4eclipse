@@ -38,6 +38,7 @@ import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.IWorkbenchPartReference;
 import org.eclipse.ui.PartInitException;
 import org.eclipse.ui.part.ViewPart;
+import org.eclipse.xterm4eclipse.workbench.MoveToEditorAreaAction;
 
 /**
  * A conversation with Claude Code in a view, as in the Code tab of Claude Desktop: its messages,
@@ -118,11 +119,18 @@ public class ChatView extends ViewPart {
 		}
 	};
 
+	/** Moves the view to the editor area, or back to the views. */
+	private MoveToEditorAreaAction moveAction;
+
 	private final IPartListener2 partListener = new IPartListener2() {
 		@Override
 		public void partActivated(IWorkbenchPartReference ref) {
 			if (ref.getPart(false) == ChatView.this) {
 				lastActive = ChatView.this;
+				// The user may also have dragged the view to or from the editor area.
+				if (moveAction != null) {
+					moveAction.update();
+				}
 			}
 		}
 	};
@@ -419,6 +427,8 @@ public class ChatView extends ViewPart {
 		toolBar.add(stop);
 		toolBar.add(newConversation);
 		toolBar.add(resume);
+		moveAction = new MoveToEditorAreaAction(this, ID, "chat"); //$NON-NLS-1$
+		toolBar.add(moveAction);
 		getViewSite().getActionBars().updateActionBars();
 	}
 

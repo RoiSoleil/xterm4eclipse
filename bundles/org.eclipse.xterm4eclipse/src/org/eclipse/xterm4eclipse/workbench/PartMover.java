@@ -1,4 +1,4 @@
-package org.eclipse.xterm4eclipse;
+package org.eclipse.xterm4eclipse.workbench;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,25 +19,29 @@ import org.eclipse.ui.IWorkbenchPartSite;
  * workbench, as dragging its tab does: the view stays the same, with its widgets, its shell and its
  * screen. Isolated so that the plug-in still loads without the Eclipse 4 model.
  */
-final class PartMover {
+public final class PartMover {
 
 	/** Persisted state of the part: the stack it came from, to go back there. */
-	static final String ORIGIN = "org.eclipse.xterm4eclipse.origin"; //$NON-NLS-1$
-	/** Views next to which a terminal goes back when the stack it came from is gone. */
-	private static final String[] NEIGHBOURS = {XtermView.ID, "org.eclipse.ui.console.ConsoleView", //$NON-NLS-1$
+	public static final String ORIGIN = "org.eclipse.xterm4eclipse.origin"; //$NON-NLS-1$
+	/** Views next to which a view goes back, after the views like it, when the stack it came from is gone. */
+	private static final String[] NEIGHBOURS = {"org.eclipse.ui.console.ConsoleView", //$NON-NLS-1$
 			"org.eclipse.ui.views.ProblemView"}; //$NON-NLS-1$
 
 	private PartMover() {
 	}
 
 	/** @return {@code true} if the part of the site is in the editor area */
-	static boolean isInEditorArea(IWorkbenchPartSite site) {
+	public static boolean isInEditorArea(IWorkbenchPartSite site) {
 		MPart part = part(site);
 		return part != null && area(element(part)) != null;
 	}
 
-	/** @return {@code true} if the part of the site can go to the other side */
-	static boolean canMove(IWorkbenchPartSite site) {
+	/**
+	 * @param viewId
+	 *            the id of the view: its stack is where it goes back when the one it came from is gone
+	 * @return {@code true} if the part of the site can go to the other side
+	 */
+	public static boolean canMove(IWorkbenchPartSite site, String viewId) {
 		MPart part = part(site);
 		if (part == null) {
 			return false;
@@ -46,7 +50,7 @@ final class PartMover {
 		if (!(element instanceof MStackElement) || !((Object) element.getParent() instanceof MPartStack)) {
 			return false;
 		}
-		return area(element) != null ? viewStack(element, part) != null : editorStack(site, element) != null;
+		return area(element) != null ? viewStack(element, part, viewId) != null : editorStack(site, element) != null;
 	}
 
 	/**
@@ -54,7 +58,7 @@ final class PartMover {
 	 *
 	 * @return {@code true} if it moved
 	 */
-	static boolean toEditorArea(IWorkbenchPartSite site) {
+	public static boolean toEditorArea(IWorkbenchPartSite site) {
 		MPart part = part(site);
 		if (part == null || area(element(part)) != null) {
 			return false;
@@ -76,17 +80,19 @@ final class PartMover {
 
 	/**
 	 * Moves the part of the site from the editor area back to the stack it came from, or next to
-	 * other terminals or the console if that stack is gone.
+	 * other views like it or the console if that stack is gone.
 	 *
+	 * @param viewId
+	 *            the id of the view, see {@link #canMove}
 	 * @return {@code true} if it moved
 	 */
-	static boolean toViews(IWorkbenchPartSite site) {
+	public static boolean toViews(IWorkbenchPartSite site, String viewId) {
 		MPart part = part(site);
 		if (part == null || area(element(part)) == null) {
 			return false;
 		}
 		MUIElement element = element(part);
-		MPartStack target = viewStack(element, part);
+		MPartStack target = viewStack(element, part, viewId);
 		if (target == null || !(element instanceof MStackElement)) {
 			return false;
 		}
@@ -158,7 +164,7 @@ final class PartMover {
 	}
 
 	/** The stack of views the part goes back to. */
-	private static MPartStack viewStack(MUIElement element, MPart part) {
+	private static MPartStack viewStack(MUIElement element, MPart part, String viewId) {
 		MPerspective perspective = perspective(element);
 		// The perspective itself, not the editor area it shows: placeholders are not containers.
 		List<MPartStack> stacks = descendants(perspective, MPartStack.class);
@@ -170,7 +176,10 @@ final class PartMover {
 				}
 			}
 		}
-		for (String neighbour : NEIGHBOURS) {
+		List<String> neighbours = new ArrayList<>();
+		neighbours.add(viewId);
+		neighbours.addAll(List.of(NEIGHBOURS));
+		for (String neighbour : neighbours) {
 			for (MPartStack stack : stacks) {
 				for (MStackElement child : stack.getChildren()) {
 					String id = child.getElementId();

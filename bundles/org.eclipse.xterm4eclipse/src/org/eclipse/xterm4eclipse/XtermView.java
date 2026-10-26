@@ -90,6 +90,7 @@ import org.eclipse.ui.part.ViewPart;
 import org.eclipse.ui.progress.IWorkbenchSiteProgressService;
 import org.eclipse.xterm4eclipse.spi.Terminal;
 import org.eclipse.xterm4eclipse.spi.TerminalCompanion;
+import org.eclipse.xterm4eclipse.workbench.MoveToEditorAreaAction;
 
 /**
  * A terminal view rendered by xterm.js (the terminal emulator used by VS Code) inside an SWT
@@ -211,7 +212,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	/** Text to run once the shell has started. */
 	private String pendingInput;
 	/** Moves the view to the editor area, or back to the views. */
-	private Action moveAction;
+	private MoveToEditorAreaAction moveAction;
 	private int cols = 80;
 	private int rows = 24;
 	private boolean keyFilterDisabled;
@@ -234,7 +235,9 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 				setKeyFilterEnabled(false);
 				clearDone();
 				// The user may also have dragged the view to or from the editor area.
-				updateMoveAction();
+				if (moveAction != null) {
+					moveAction.update();
+				}
 			}
 		}
 
@@ -908,18 +911,8 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		restartAction.setToolTipText("Start the shell again, in the directory it is in"); //$NON-NLS-1$
 		getViewSite().getActionBars().getMenuManager().add(restartAction);
 
-		moveAction = new Action() {
-			@Override
-			public void run() {
-				if (isInEditorArea()) {
-					moveToViews();
-				} else {
-					moveToEditorArea();
-				}
-			}
-		};
+		moveAction = new MoveToEditorAreaAction(this, ID, "terminal"); //$NON-NLS-1$
 		toolBar.add(moveAction);
-		updateMoveAction();
 
 		IMenuManager viewMenu = getViewSite().getActionBars().getMenuManager();
 		Action find = new Action("Find\u2026\t" + (IS_MAC ? "\u2318F" : "Ctrl+Shift+F")) { //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
@@ -932,39 +925,9 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		viewMenu.add(find);
 	}
 
-	/**
-	 * Shows the move action that fits where the view is now: to the editor area, or back among the
-	 * other views.
-	 */
-	private void updateMoveAction() {
-		if (moveAction == null) {
-			return;
-		}
-		boolean inEditorArea = isInEditorArea();
-		moveAction.setText(inEditorArea ? "Move Back to the Views" : "Move to the Editor Area"); //$NON-NLS-1$ //$NON-NLS-2$
-		moveAction.setToolTipText(inEditorArea ? "Move this terminal back among the views" //$NON-NLS-1$
-				: "Move this terminal to the editor area, next to the editors"); //$NON-NLS-1$
-		moveAction.setImageDescriptor(ImageDescriptor.createFromFile(XtermView.class,
-				inEditorArea ? "/icons/move-to-view.png" : "/icons/move-to-editor.png")); //$NON-NLS-1$ //$NON-NLS-2$
-		moveAction.setEnabled(canMove());
-	}
-
 	/** @return {@code true} if the view is in the editor area of the window */
 	boolean isInEditorArea() {
-		try {
-			return PartMover.isInEditorArea(getSite());
-		} catch (LinkageError | RuntimeException e) {
-			return false;
-		}
-	}
-
-	private boolean canMove() {
-		try {
-			return PartMover.canMove(getSite());
-		} catch (LinkageError | RuntimeException e) {
-			// Not in an Eclipse 4 workbench.
-			return false;
-		}
+		return moveAction != null && moveAction.isInEditorArea();
 	}
 
 	/**
@@ -972,26 +935,12 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	 * there.
 	 */
 	void moveToEditorArea() {
-		move(true);
+		moveAction.moveToEditorArea();
 	}
 
 	/** Moves this view back among the views, where it came from if that place still exists. */
 	void moveToViews() {
-		move(false);
-	}
-
-	private void move(boolean toEditorArea) {
-		boolean moved;
-		try {
-			moved = toEditorArea ? PartMover.toEditorArea(getSite()) : PartMover.toViews(getSite());
-		} catch (LinkageError | RuntimeException e) {
-			XtermPlugin.log("Could not move the terminal", e); //$NON-NLS-1$
-			moved = false;
-		}
-		if (moved) {
-			getSite().getPage().activate(this);
-		}
-		updateMoveAction();
+		moveAction.moveToViews();
 	}
 
 	private void openTerminal(String shellCommandLine) {

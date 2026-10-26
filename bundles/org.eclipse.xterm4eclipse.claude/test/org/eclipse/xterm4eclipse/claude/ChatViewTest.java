@@ -3,6 +3,7 @@ package org.eclipse.xterm4eclipse.claude;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -19,6 +20,9 @@ import java.util.function.UnaryOperator;
 
 import org.eclipse.core.commands.ExecutionEvent;
 import org.eclipse.core.expressions.EvaluationContext;
+import org.eclipse.jface.action.ActionContributionItem;
+import org.eclipse.jface.action.IAction;
+import org.eclipse.jface.action.IContributionItem;
 import org.eclipse.jface.action.MenuManager;
 import org.eclipse.jface.action.ToolBarManager;
 import org.eclipse.jface.text.Document;
@@ -138,6 +142,9 @@ class ChatViewTest {
 		}
 	}
 
+	/** The toolbar of the last view that was created. */
+	private ToolBarManager lastToolBar;
+
 	private IViewSite site() {
 		Fake workbench = new Fake();
 		workbench.on("getSharedImages", args -> new Fake().as(ISharedImages.class));
@@ -147,6 +154,7 @@ class ChatViewTest {
 		IWorkbenchWindow window = new Fake().on("getWorkbench", args -> workbench.as(IWorkbench.class))
 				.as(IWorkbenchWindow.class);
 		ToolBarManager toolBar = new ToolBarManager();
+		lastToolBar = toolBar;
 		MenuManager menu = new MenuManager();
 		return new Fake().on("getPage", args -> workbenchPage)
 				.on("getActionBars", args -> new Fake().on("getToolBarManager", a -> toolBar)
@@ -512,6 +520,28 @@ class ChatViewTest {
 			}
 			closeTheNextDialog();
 		});
+	}
+
+	/** The action of the toolbar of the last view that is called so. */
+	private IAction toolBarAction(String text) {
+		for (IContributionItem item : lastToolBar.getItems()) {
+			if (item instanceof ActionContributionItem contribution && text.equals(contribution.getAction().getText())) {
+				return contribution.getAction();
+			}
+		}
+		return null;
+	}
+
+	@Test
+	void hasTheButtonThatMovesTheViewToTheEditorArea() throws Exception {
+		ChatView view = open(null);
+		IAction move = toolBarAction("Move to the Editor Area");
+		assertNotNull(move, "the same button as the terminal has");
+		assertEquals("Move this chat to the editor area, next to the editors", move.getToolTipText());
+		assertFalse(move.isEnabled(), "a view that is not in an Eclipse 4 workbench cannot move");
+		// The user may have dragged the view: it looks again where it is when it is activated.
+		partListeners.forEach(listener -> listener.partActivated(new Fake().on("getPart", args -> view).as(IWorkbenchPartReference.class)));
+		assertEquals("Move to the Editor Area", move.getText());
 	}
 
 	@Test
