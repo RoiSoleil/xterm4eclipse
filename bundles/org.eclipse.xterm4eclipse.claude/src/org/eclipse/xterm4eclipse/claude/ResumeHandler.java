@@ -23,6 +23,15 @@ import org.eclipse.ui.handlers.HandlerUtil;
  */
 public class ResumeHandler extends AbstractHandler {
 
+	/** Asks which conversation to resume. */
+	interface Chooser {
+		/** @return the conversation, or {@code null} for none */
+		Conversations.Conversation choose(Shell shell, File directory, List<Conversations.Conversation> conversations);
+	}
+
+	/** In a dialog; a test may change it. */
+	static Chooser chooser = ResumeHandler::choose;
+
 	@Override
 	public Object execute(ExecutionEvent event) throws ExecutionException {
 		IWorkbenchWindow window = HandlerUtil.getActiveWorkbenchWindowChecked(event);
@@ -39,29 +48,37 @@ public class ResumeHandler extends AbstractHandler {
 					"Claude Code has kept no conversation for " + directory.getPath() + '.'); //$NON-NLS-1$
 			return;
 		}
-		DateFormat format = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT);
-		ElementListSelectionDialog dialog = new ElementListSelectionDialog(shell, new LabelProvider() {
-			@Override
-			public String getText(Object element) {
-				Conversations.Conversation conversation = (Conversations.Conversation) element;
-				return conversation.title() + "  —  " + format.format(new Date(conversation.modified())); //$NON-NLS-1$
-			}
-		});
-		dialog.setTitle("Resume a Conversation"); //$NON-NLS-1$
-		dialog.setMessage("Conversations of Claude Code in " + directory.getPath() + ':'); //$NON-NLS-1$
-		dialog.setElements(conversations.toArray());
-		dialog.setMultipleSelection(false);
-		// The list keeps the order of the elements: the latest first.
-		dialog.setIgnoreCase(true);
-		dialog.setMatchEmptyString(true);
-		if (dialog.open() != ElementListSelectionDialog.OK || dialog.getFirstResult() == null) {
+		Conversations.Conversation chosen = chooser.choose(shell, directory, conversations);
+		if (chosen == null) {
 			return;
 		}
-		Conversations.Conversation chosen = (Conversations.Conversation) dialog.getFirstResult();
 		try {
 			ChatView.open(page, directory, chosen.id());
 		} catch (PartInitException e) {
 			ChatPlugin.log("Could not open a chat with Claude Code", e); //$NON-NLS-1$
 		}
+	}
+
+	private static Conversations.Conversation choose(Shell shell, File directory, List<Conversations.Conversation> conversations) {
+		DateFormat format = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT);
+		ElementListSelectionDialog dialog = new ElementListSelectionDialog(shell, new LabelProvider() {
+			@Override
+			public String getText(Object element) {
+				Conversations.Conversation conversation = (Conversations.Conversation) element;
+				return conversation.title() + "  \u2014  " + format.format(new Date(conversation.modified())); //$NON-NLS-1$
+			}
+		});
+		dialog.setTitle("Resume a Conversation"); //$NON-NLS-1$
+		dialog.setMessage("Conversations of Claude Code in " + directory.getPath() + ':'); //$NON-NLS-1$
+		dialog.setElements(conversations.toArray());
+		// The latest, which Enter resumes.
+		dialog.setInitialSelections(conversations.get(0));
+		dialog.setMultipleSelection(false);
+		dialog.setIgnoreCase(true);
+		dialog.setMatchEmptyString(true);
+		if (dialog.open() != ElementListSelectionDialog.OK) {
+			return null;
+		}
+		return (Conversations.Conversation) dialog.getFirstResult();
 	}
 }

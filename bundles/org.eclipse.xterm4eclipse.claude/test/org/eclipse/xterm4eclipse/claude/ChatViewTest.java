@@ -17,15 +17,29 @@ import java.util.Map;
 import java.util.function.BooleanSupplier;
 import java.util.function.UnaryOperator;
 
+import org.eclipse.core.commands.ExecutionEvent;
+import org.eclipse.core.expressions.EvaluationContext;
 import org.eclipse.jface.action.MenuManager;
 import org.eclipse.jface.action.ToolBarManager;
 import org.eclipse.jface.text.Document;
 import org.eclipse.jface.text.TextSelection;
 import org.eclipse.jface.util.IPropertyChangeListener;
+import org.eclipse.jface.viewers.ISelection;
+import org.eclipse.jface.viewers.StructuredSelection;
+import org.eclipse.swt.SWT;
+import org.eclipse.swt.widgets.Button;
+import org.eclipse.swt.widgets.Combo;
+import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Control;
+import org.eclipse.swt.widgets.Event;
+import org.eclipse.swt.widgets.Text;
 import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.IActionBars;
+import org.eclipse.ui.IEditorPart;
+import org.eclipse.ui.ISources;
+import org.eclipse.ui.IURIEditorInput;
 import org.eclipse.ui.IMemento;
 import org.eclipse.ui.IPartListener2;
 import org.eclipse.ui.ISharedImages;
@@ -414,6 +428,177 @@ class ChatViewTest {
 		assertEquals("#L2-3", AskClaudeHandler.lines(new TextSelection(document, 4, 8)));
 		assertEquals("#L2", AskClaudeHandler.lines(new TextSelection(document, 4, 2)));
 		assertNull(AskClaudeHandler.lines(new TextSelection(document, 4, 0)), "no selection: the whole file");
+	}
+
+	/** The window of the workbench, for the handlers. */
+	private ExecutionEvent event(Object part, ISelection selection) {
+		IWorkbenchWindow window = new Fake().on("getActivePage", args -> workbenchPage)
+				.on("getShell", args -> shells.isEmpty() ? null : shells.get(0)).as(IWorkbenchWindow.class);
+		EvaluationContext context = new EvaluationContext(null, new Object());
+		context.addVariable(ISources.ACTIVE_WORKBENCH_WINDOW_NAME, window);
+		if (part != null) {
+			context.addVariable(ISources.ACTIVE_PART_NAME, part);
+		}
+		if (selection != null) {
+			context.addVariable(ISources.ACTIVE_CURRENT_SELECTION_NAME, selection);
+		}
+		return new ExecutionEvent(null, Map.of(), null, context);
+	}
+
+	/** An editor of a file outside of the workspace. */
+	private IEditorPart editor(File file) {
+		IURIEditorInput input = new Fake().on("getURI", args -> file.toURI()).as(IURIEditorInput.class);
+		return new Fake().on("getEditorInput", args -> input).as(IEditorPart.class);
+	}
+
+	private Path keptConversation(String id) throws Exception {
+		Path folder = Files.createDirectories(Conversations.home().resolve("projects").resolve(Conversations.folderName(project)));
+		return Files.writeString(folder.resolve(id + ".jsonl"), ConversationsTest.conversation(project));
+	}
+
+	@Test
+	void opensANewChatInTheFolderOfTheActiveEditor() throws Exception {
+		File file = new File(project, "a.txt");
+		page.on("getActiveEditor", args -> editor(file));
+		assertEquals(project, NewChatHandler.directory(workbenchPage));
+		new NewChatHandler().execute(event(null, null));
+		assertEquals(1, views.size());
+		assertEquals(project, views.get(0).directory());
+		assertFalse(Conversations.exists(project, views.get(0).sessionId()), "a new conversation");
+
+		keptConversation(ConversationsTest.ID);
+		ChatPlugin.preferences().setValue(ChatPlugin.PREF_CONTINUE_LAST, true);
+		new NewChatHandler().execute(event(null, null));
+		assertEquals(ConversationsTest.ID, views.get(1).sessionId(), "the last conversation of the project");
+		awaitText(views.get(1), "Resumed");
+
+		page.on("getActiveEditor", args -> null);
+		assertEquals(new File(System.getProperty("user.home")), NewChatHandler.directory(workbenchPage), "nothing selected");
+		assertEquals(new File(System.getProperty("user.home")), NewChatHandler.directory(null));
+	}
+
+	@Test
+	void asksClaudeCodeAboutTheSelectedLinesOrFiles() throws Exception {
+		Files.writeString(project.toPath().resolve("a.txt"), "one\ntwo\nthree\n");
+		ChatView view = open(null);
+		partListeners.forEach(listener -> listener.partActivated(
+				new Fake().on("getPart", args -> view).as(IWorkbenchPartReference.class)));
+		Document document = new Document("one\ntwo\nthree\n");
+		new AskClaudeHandler().execute(event(editor(new File(project, "a.txt")), new TextSelection(document, 4, 6)));
+		await("the lines in the message", () -> "@a.txt#L2-3 ".equals(state(view).get("input")));
+		assertEquals(1, views.size(), "the chat of the folder");
+
+		File outside = Files.writeString(temp.resolve("b.txt"), "").toFile();
+		IURIEditorInput element = new Fake().on("getURI", args -> outside.toURI()).as(IURIEditorInput.class);
+		new AskClaudeHandler().execute(event(null, new StructuredSelection(element)));
+		assertEquals(2, views.size(), "a file outside of its folder: a new chat");
+		ChatView other = views.get(1);
+		assertEquals(temp.toFile().getCanonicalFile(), other.directory().getCanonicalFile());
+		await("the file in the message", () -> "@b.txt ".equals(state(other).get("input")));
+
+		assertNull(new AskClaudeHandler().execute(event(null, new StructuredSelection(new Object()))), "nothing to ask about");
+		assertNull(AskClaudeHandler.file(new Fake().on("getURI", args -> java.net.URI.create("https://example.com/a"))
+				.as(IURIEditorInput.class)), "not a file");
+	}
+
+	/** Closes the next dialog, as the user does. */
+	private void closeTheNextDialog() {
+		DISPLAY.timerExec(200, () -> {
+			for (Shell shell : DISPLAY.getShells()) {
+				if (!shells.contains(shell) && shell.isVisible()) {
+					shell.close();
+					return;
+				}
+			}
+			closeTheNextDialog();
+		});
+	}
+
+	@Test
+	void resumesAConversationOfTheProject() throws Exception {
+		Shell parent = new Shell(DISPLAY);
+		shells.add(parent);
+		List<String> offered = new ArrayList<>();
+		ResumeHandler.Chooser previous = ResumeHandler.chooser;
+		try {
+			ResumeHandler.chooser = (shell, directory, conversations) -> {
+				conversations.forEach(conversation -> offered.add(conversation.title()));
+				return offered.size() > 1 ? conversations.get(0) : null;
+			};
+			closeTheNextDialog();
+			ResumeHandler.resume(parent, workbenchPage, project);
+			assertTrue(views.isEmpty() && offered.isEmpty(), "none kept: nothing to resume");
+
+			keptConversation(ConversationsTest.ID);
+			ResumeHandler.resume(parent, workbenchPage, project);
+			assertEquals(List.of("Fix the build"), offered);
+			assertTrue(views.isEmpty(), "none chosen");
+
+			page.on("getSelection", args -> new StructuredSelection(new Fake()
+					.on("getURI", a -> new File(project, "a.txt").toURI()).as(IURIEditorInput.class)));
+			new ResumeHandler().execute(event(null, null));
+			assertEquals(1, views.size(), "the conversations of the project of the selection");
+			assertEquals(ConversationsTest.ID, views.get(0).sessionId());
+			awaitText(views.get(0), "Resumed");
+		} finally {
+			ResumeHandler.chooser = previous;
+		}
+	}
+
+	@Test
+	void editsTheSettings() {
+		Shell shell = new Shell(DISPLAY);
+		shells.add(shell);
+		ChatPreferencePage preferences = new ChatPreferencePage();
+		preferences.init(null);
+		preferences.createControl(shell);
+		List<Text> texts = new ArrayList<>();
+		List<Combo> combos = new ArrayList<>();
+		List<Button> checks = new ArrayList<>();
+		collect(preferences.getControl(), texts, combos, checks);
+		assertEquals(3, texts.size(), "program, model, arguments");
+		assertEquals(1, combos.size());
+		assertEquals("Ask before edits", combos.get(0).getText());
+		type(texts.get(1), "$(rm)");
+		assertFalse(preferences.isValid(), "not a model");
+		type(texts.get(1), "opus");
+		type(texts.get(2), "--effort high");
+		assertTrue(preferences.isValid());
+		assertTrue(preferences.performOk());
+		assertEquals("opus", ChatPlugin.preference(ChatPlugin.PREF_MODEL));
+		assertEquals("--effort high", ChatPlugin.preference(ChatPlugin.PREF_ARGUMENTS));
+	}
+
+	/** Types a text as the user does: the field editors check it on each key. */
+	private static void type(Text text, String value) {
+		text.setText(value);
+		text.notifyListeners(SWT.KeyUp, new Event());
+	}
+
+	private static void collect(Control control, List<Text> texts, List<Combo> combos, List<Button> checks) {
+		if (control instanceof Text text) {
+			texts.add(text);
+		} else if (control instanceof Combo combo) {
+			combos.add(combo);
+		} else if (control instanceof Button button && (button.getStyle() & SWT.CHECK) != 0) {
+			checks.add(button);
+		}
+		if (control instanceof Composite composite) {
+			for (Control child : composite.getChildren()) {
+				collect(child, texts, combos, checks);
+			}
+		}
+	}
+
+	@Test
+	void opensTheFilesOnlyInTheEditorsOfEclipse() {
+		assertEquals(Workspace.TEXT_EDITOR, Workspace.editorId(null));
+		assertEquals(Workspace.TEXT_EDITOR, Workspace.editorId(new Fake().on("isOpenExternal", args -> true)
+				.as(org.eclipse.ui.IEditorDescriptor.class)), "never a program of the system");
+		assertEquals("java", Workspace.editorId(new Fake().on("getId", args -> "java").as(org.eclipse.ui.IEditorDescriptor.class)));
+		assertNull(Workspace.location(new Object()));
+		assertNull(Workspace.projectDirectory(new Object()));
+		Workspace.refresh(project, true);
 	}
 
 	@Test

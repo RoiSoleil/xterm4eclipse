@@ -44,9 +44,11 @@ class ClaudeProcessTest {
 	}
 
 	@AfterEach
-	void stop() {
+	void stop() throws Exception {
 		if (claude != null) {
 			claude.stop();
+			// Its folder is deleted after the test: Windows deletes no folder that a process works in.
+			exit.get(30, TimeUnit.SECONDS);
 		}
 		ClaudeCommand.environment = previousEnvironment;
 	}
