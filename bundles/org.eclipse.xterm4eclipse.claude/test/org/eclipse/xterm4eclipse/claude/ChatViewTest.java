@@ -233,6 +233,39 @@ class ChatViewTest {
 	}
 
 	@Test
+	void opensAFileThatTheMessageNamesByItsNameOnly() throws Exception {
+		Files.createDirectories(project.toPath().resolve("src/main"));
+		Files.writeString(project.toPath().resolve("src/main/Deep.txt"), "x");
+		ChatView view = open(null);
+		// A name only, where the file is in a folder below: found, not left unanswered.
+		view.browser.execute("javaOpenFile('Deep.txt', 3)");
+		await("the file of that name", () -> opened.contains("Deep.txt:3"));
+
+		// The same name in two folders: the user chooses.
+		Files.createDirectories(project.toPath().resolve("other"));
+		Files.writeString(project.toPath().resolve("other/Deep.txt"), "x");
+		List<File> offered = new ArrayList<>();
+		java.util.function.Function<List<File>, File> previous = ChatView.fileChooser;
+		try {
+			ChatView.fileChooser = files -> {
+				offered.addAll(files);
+				return files.get(1);
+			};
+			opened.clear();
+			view.browser.execute("javaOpenFile('Deep.txt', 0)");
+			await("the file that was chosen", () -> !opened.isEmpty());
+			assertEquals(2, offered.size(), offered.toString());
+			assertEquals(new File(project, "src/main/Deep.txt"), offered.get(1));
+		} finally {
+			ChatView.fileChooser = previous;
+		}
+		opened.clear();
+		view.browser.execute("javaOpenFile('NoSuchFile.txt', 0)");
+		TestWorkbench.pump(300);
+		assertTrue(opened.isEmpty(), "nothing named so: nothing opens");
+	}
+
+	@Test
 	void scrollsWithAThinScrollbar() throws Exception {
 		ChatView view = open(null);
 		// Where the browser knows the property, the log has the thin scrollbar of the page, not the wide one of the system.

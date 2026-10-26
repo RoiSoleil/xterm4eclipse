@@ -12,11 +12,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
 
 import org.eclipse.jface.action.Action;
 import org.eclipse.jface.action.IToolBarManager;
 import org.eclipse.jface.resource.JFaceResources;
 import org.eclipse.jface.util.IPropertyChangeListener;
+import org.eclipse.jface.viewers.LabelProvider;
+import org.eclipse.jface.window.Window;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.browser.Browser;
 import org.eclipse.swt.browser.BrowserFunction;
@@ -37,6 +40,7 @@ import org.eclipse.ui.IWorkbench;
 import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.IWorkbenchPartReference;
 import org.eclipse.ui.PartInitException;
+import org.eclipse.ui.dialogs.ElementListSelectionDialog;
 import org.eclipse.ui.part.ViewPart;
 import org.eclipse.xterm4eclipse.workbench.MoveToEditorAreaAction;
 
@@ -786,19 +790,54 @@ public class ChatView extends ViewPart {
 		post(Map.of("type", "x4e_insert", "text", text)); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 	}
 
+	/** Chooses among several files that a name can be: the list of what was found; a test may change it. */
+	static Function<List<File>, File> fileChooser = ChatView::chooseFile;
+
 	private void openFile(String path, int line) {
 		File file = new File(path);
 		if (!file.isAbsolute()) {
 			file = new File(directory, path);
 		}
-		if (!file.isFile()) {
-			return;
+		if (file.isFile()) {
+			openEditor(file, line);
+		} else if (!new File(path).isAbsolute()) {
+			// Only a name, or the end of a path: looked for in the folder, off the UI thread.
+			Thread search = new Thread(() -> {
+				List<File> found = FileFinder.find(directory, path);
+				if (!found.isEmpty()) {
+					ChatPlugin.later(display, () -> {
+						File chosen = found.size() == 1 ? found.get(0) : fileChooser.apply(found);
+						if (chosen != null) {
+							openEditor(chosen, line);
+						}
+					});
+				}
+			}, "Claude Code Chat: find " + path); //$NON-NLS-1$
+			search.setDaemon(true);
+			search.start();
 		}
+	}
+
+	private void openEditor(File file, int line) {
 		try {
 			opener.open(getSite().getPage(), file, line);
 		} catch (PartInitException | RuntimeException e) {
 			ChatPlugin.log("Could not open " + file, e); //$NON-NLS-1$
 		}
+	}
+
+	private static File chooseFile(List<File> files) {
+		ElementListSelectionDialog dialog = new ElementListSelectionDialog(null, new LabelProvider() {
+			@Override
+			public String getText(Object element) {
+				return ((File) element).getPath();
+			}
+		});
+		dialog.setTitle("Open in Eclipse"); //$NON-NLS-1$
+		dialog.setMessage("Several files have this name:"); //$NON-NLS-1$
+		dialog.setElements(files.toArray());
+		dialog.setMultipleSelection(false);
+		return dialog.open() == Window.OK ? (File) dialog.getFirstResult() : null;
 	}
 
 	private void openChange(String toolUseId) {
