@@ -76,6 +76,7 @@ import org.eclipse.swt.widgets.MenuItem;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.IEditorInput;
 import org.eclipse.ui.IEditorPart;
+import org.eclipse.ui.IWorkbenchPart;
 import org.eclipse.ui.IEditorDescriptor;
 import org.eclipse.ui.ISelectionService;
 import org.eclipse.ui.IURIEditorInput;
@@ -90,6 +91,7 @@ import org.eclipse.ui.services.IEvaluationService;
 import org.eclipse.ui.services.IServiceLocator;
 import org.eclipse.ui.texteditor.IDocumentProvider;
 import org.eclipse.ui.texteditor.ITextEditor;
+import org.eclipse.xterm4eclipse.workbench.Terminals;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -282,6 +284,24 @@ class XtermViewTest {
 		workbench.selection = new StructuredSelection(new Fake().on("getProject", args -> project).as(IResource.class));
 		XtermView view = open();
 		run(view, "echo in=$PWD", "in=" + shellPath(FOLDER));
+	}
+
+	@Test
+	void tellsTheOtherPlugInsWhereTheShellIs() throws Exception {
+		IProject project = new Fake().on("getLocation", args -> org.eclipse.core.runtime.Path.fromOSString(FOLDER.getPath()))
+				.as(IProject.class);
+		workbench.selection = new StructuredSelection(new Fake().on("getProject", args -> project).as(IResource.class));
+		XtermView view = open();
+		assertEquals(FOLDER.getCanonicalFile(), Terminals.directoryOf(view).getCanonicalFile(), "where it started");
+		type(view, "cd " + shellPath(OTHER_FOLDER) + "\r");
+		await("cd", () -> {
+			try {
+				return OTHER_FOLDER.getCanonicalFile().equals(Terminals.directoryOf(view).getCanonicalFile());
+			} catch (java.io.IOException e) {
+				return false;
+			}
+		});
+		assertNull(Terminals.directoryOf(new Fake().as(IWorkbenchPart.class)), "not a terminal");
 	}
 
 	@Test

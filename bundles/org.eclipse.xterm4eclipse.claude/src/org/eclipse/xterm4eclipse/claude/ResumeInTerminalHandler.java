@@ -8,6 +8,7 @@ import org.eclipse.core.commands.ExecutionException;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.IWorkbenchPage;
+import org.eclipse.ui.IWorkbenchPart;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.PartInitException;
 import org.eclipse.ui.handlers.HandlerUtil;
@@ -34,9 +35,18 @@ public class ResumeInTerminalHandler extends AbstractHandler {
 		IWorkbenchWindow window = HandlerUtil.getActiveWorkbenchWindowChecked(event);
 		IWorkbenchPage page = window.getActivePage();
 		if (page != null) {
-			resume(window.getShell(), page, NewChatHandler.directory(page));
+			resume(window.getShell(), page, directory(HandlerUtil.getActivePart(event), page));
 		}
 		return null;
+	}
+
+	/**
+	 * @return where the terminal is, when the command runs from a terminal (its button): that is the
+	 *         project whose conversations it resumes, not the one of the selection of the workbench
+	 */
+	static File directory(IWorkbenchPart active, IWorkbenchPage page) {
+		File terminal = Terminals.directoryOf(active);
+		return terminal != null && terminal.isDirectory() ? terminal : NewChatHandler.directory(page);
 	}
 
 	/** Asks which conversation of the folder to resume, and resumes it in a new terminal. */

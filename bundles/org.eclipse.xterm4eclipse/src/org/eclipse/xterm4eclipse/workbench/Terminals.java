@@ -3,6 +3,7 @@ package org.eclipse.xterm4eclipse.workbench;
 import java.io.File;
 
 import org.eclipse.ui.IWorkbenchPage;
+import org.eclipse.ui.IWorkbenchPart;
 import org.eclipse.ui.PartInitException;
 import org.eclipse.xterm4eclipse.XtermView;
 
@@ -10,6 +11,14 @@ import org.eclipse.xterm4eclipse.XtermView;
 public final class Terminals {
 
 	private Terminals() {
+	}
+
+	/**
+	 * @return where the shell of the part is now, as far as it is known (the directory it started in
+	 *         where the system does not tell more), or {@code null} if the part is not a terminal
+	 */
+	public static File directoryOf(IWorkbenchPart part) {
+		return part instanceof XtermView view ? view.currentDirectory() : null;
 	}
 
 	/**

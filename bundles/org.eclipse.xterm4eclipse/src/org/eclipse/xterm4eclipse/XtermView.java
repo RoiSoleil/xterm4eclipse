@@ -608,7 +608,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	}
 
 	/** @return where the shell is now, as far as it is known */
-	private File currentDirectory() {
+	public File currentDirectory() {
 		PtySession current = session;
 		File directory = current != null ? current.currentDirectory() : null;
 		if (directory == null) {

@@ -51,6 +51,7 @@ import org.eclipse.ui.IViewReference;
 import org.eclipse.ui.IViewSite;
 import org.eclipse.ui.IWorkbench;
 import org.eclipse.ui.IWorkbenchPage;
+import org.eclipse.ui.IWorkbenchPart;
 import org.eclipse.ui.IWorkbenchPartReference;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.PartInitException;
@@ -635,6 +636,16 @@ class ChatViewTest {
 			ResumeHandler.chooser = previousChooser;
 			ResumeInTerminalHandler.opener = previousOpener;
 		}
+	}
+
+	@Test
+	void resumesInTheFolderOfTheTerminalNotOfTheSelection() throws Exception {
+		// From the button of a terminal the project is the one of the terminal; the selection is of another.
+		page.on("getSelection", args -> new StructuredSelection(new Fake()
+				.on("getURI", a -> new File(project, "a.txt").toURI()).as(IURIEditorInput.class)));
+		assertEquals(project, ResumeInTerminalHandler.directory(new Fake().as(IWorkbenchPart.class), workbenchPage),
+				"not a terminal: the project of the selection, as for the menu");
+		assertEquals(project, ResumeInTerminalHandler.directory(null, workbenchPage), "no part");
 	}
 
 	@Test
