@@ -14,6 +14,12 @@ import org.eclipse.ui.IWorkbenchPartSite;
  */
 public final class MoveToEditorAreaAction extends Action {
 
+	/** Persisted state of the part: the stack it came from; a test reads it. */
+	public static final String ORIGIN = PartMover.ORIGIN;
+
+	private static ImageDescriptor toEditor;
+	private static ImageDescriptor toView;
+
 	private final IWorkbenchPart part;
 	private final String viewId;
 	private final String noun;
@@ -84,6 +90,14 @@ public final class MoveToEditorAreaAction extends Action {
 		update();
 	}
 
+	private static synchronized ImageDescriptor icon(boolean inEditorArea) {
+		if (toEditor == null) {
+			toEditor = ImageDescriptor.createFromFile(MoveToEditorAreaAction.class, "/icons/move-to-editor.png"); //$NON-NLS-1$
+			toView = ImageDescriptor.createFromFile(MoveToEditorAreaAction.class, "/icons/move-to-view.png"); //$NON-NLS-1$
+		}
+		return inEditorArea ? toView : toEditor;
+	}
+
 	/**
 	 * Shows what fits where the view is now: move to the editor area, or back among the other
 	 * views. To be called when the view may have moved, such as when the user activates it.
@@ -93,8 +107,7 @@ public final class MoveToEditorAreaAction extends Action {
 		setText(inEditorArea ? "Move Back to the Views" : "Move to the Editor Area"); //$NON-NLS-1$ //$NON-NLS-2$
 		setToolTipText(inEditorArea ? "Move this " + noun + " back among the views" //$NON-NLS-1$ //$NON-NLS-2$
 				: "Move this " + noun + " to the editor area, next to the editors"); //$NON-NLS-1$ //$NON-NLS-2$
-		setImageDescriptor(ImageDescriptor.createFromFile(MoveToEditorAreaAction.class,
-				inEditorArea ? "/icons/move-to-view.png" : "/icons/move-to-editor.png")); //$NON-NLS-1$ //$NON-NLS-2$
+		setImageDescriptor(icon(inEditorArea));
 		setEnabled(canMove());
 	}
 }

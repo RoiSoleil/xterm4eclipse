@@ -31,7 +31,7 @@ import org.eclipse.ui.IEditorInput;
 import org.eclipse.ui.IEditorPart;
 import org.eclipse.ui.PartInitException;
 import org.eclipse.ui.XMLMemento;
-import org.eclipse.xterm4eclipse.workbench.PartMover;
+import org.eclipse.xterm4eclipse.workbench.MoveToEditorAreaAction;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -131,7 +131,7 @@ class MoveToEditorAreaTest {
 		assertSame(placeholder, editors.getSelectedElement());
 		assertFalse(bottom.getChildren().contains(placeholder));
 		assertTrue(view.isInEditorArea());
-		assertEquals("bottom", part.getPersistedState().get(PartMover.ORIGIN), "where it comes from is kept");
+		assertEquals("bottom", part.getPersistedState().get(MoveToEditorAreaAction.ORIGIN), "where it comes from is kept");
 		assertEquals(1, workbench.page.count("activate"));
 		assertEquals("Move Back to the Views", move.getText());
 		// The same view, the same shell.
@@ -142,7 +142,7 @@ class MoveToEditorAreaTest {
 		assertSame(bottom, placeholder.getParent());
 		assertSame(placeholder, bottom.getSelectedElement());
 		assertFalse(view.isInEditorArea());
-		assertNull(part.getPersistedState().get(PartMover.ORIGIN));
+		assertNull(part.getPersistedState().get(MoveToEditorAreaAction.ORIGIN));
 		assertEquals("Move to the Editor Area", move.getText());
 		run(view, "echo back-$X", "back-still-42");
 	}

@@ -19,7 +19,7 @@ import org.eclipse.ui.IWorkbenchPartSite;
  * workbench, as dragging its tab does: the view stays the same, with its widgets, its shell and its
  * screen. Isolated so that the plug-in still loads without the Eclipse 4 model.
  */
-public final class PartMover {
+final class PartMover {
 
 	/** Persisted state of the part: the stack it came from, to go back there. */
 	public static final String ORIGIN = "org.eclipse.xterm4eclipse.origin"; //$NON-NLS-1$

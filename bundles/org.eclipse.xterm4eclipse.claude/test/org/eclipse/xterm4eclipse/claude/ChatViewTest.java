@@ -606,6 +606,36 @@ class ChatViewTest {
 	}
 
 	@Test
+	void doesNotResumeInATerminalWhatItCannotRunSafely() throws Exception {
+		Shell parent = new Shell(DISPLAY);
+		shells.add(parent);
+		List<String> opened = new ArrayList<>();
+		ResumeHandler.Chooser previousChooser = ResumeHandler.chooser;
+		ResumeInTerminalHandler.Opener previousOpener = ResumeInTerminalHandler.opener;
+		String program = ChatPlugin.preference(ChatPlugin.PREF_PROGRAM);
+		try {
+			keptConversation(ConversationsTest.ID);
+			ResumeInTerminalHandler.opener = (target, commandLine, directory) -> opened.add(commandLine);
+
+			// An id that the command line of Claude Code would take for an option.
+			ResumeHandler.chooser = (shell, directory, conversations) -> new Conversations.Conversation("-x", "an option", 0);
+			ResumeInTerminalHandler.resume(parent, workbenchPage, project);
+			assertTrue(opened.isEmpty(), "not a plain id");
+
+			ResumeHandler.chooser = (shell, directory, conversations) -> conversations.get(0);
+			// A program that is not a file: said, not replaced by another claude.
+			ChatPlugin.preferences().setValue(ChatPlugin.PREF_PROGRAM, new File(project, "no-claude").getPath());
+			closeTheNextDialog();
+			ResumeInTerminalHandler.resume(parent, workbenchPage, project);
+			assertTrue(opened.isEmpty(), "the program of the preferences is not a file");
+		} finally {
+			ResumeHandler.chooser = previousChooser;
+			ResumeInTerminalHandler.opener = previousOpener;
+			ChatPlugin.preferences().setValue(ChatPlugin.PREF_PROGRAM, program);
+		}
+	}
+
+	@Test
 	void editsTheSettings() {
 		Shell shell = new Shell(DISPLAY);
 		shells.add(shell);

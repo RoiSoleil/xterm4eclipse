@@ -5,6 +5,7 @@ import java.io.File;
 import org.eclipse.core.commands.AbstractHandler;
 import org.eclipse.core.commands.ExecutionEvent;
 import org.eclipse.core.commands.ExecutionException;
+import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.IWorkbenchWindow;
@@ -32,7 +33,9 @@ public class ResumeInTerminalHandler extends AbstractHandler {
 	public Object execute(ExecutionEvent event) throws ExecutionException {
 		IWorkbenchWindow window = HandlerUtil.getActiveWorkbenchWindowChecked(event);
 		IWorkbenchPage page = window.getActivePage();
-		resume(window.getShell(), page, NewChatHandler.directory(page));
+		if (page != null) {
+			resume(window.getShell(), page, NewChatHandler.directory(page));
+		}
 		return null;
 	}
 
@@ -42,8 +45,19 @@ public class ResumeInTerminalHandler extends AbstractHandler {
 		if (chosen == null) {
 			return;
 		}
+		// Not a file name that the shell would take for more than an argument, or the CLI for an option.
+		if (!chosen.id().matches("[A-Za-z0-9_][A-Za-z0-9_-]*")) { //$NON-NLS-1$
+			ChatPlugin.log("Did not resume the conversation " + chosen.id() + ": its id is not a plain one", null); //$NON-NLS-1$ //$NON-NLS-2$
+			return;
+		}
 		// The program of the preferences of the chat, or else the one that Eclipse finds.
-		File program = ClaudeCommand.program(ChatPlugin.preference(ChatPlugin.PREF_PROGRAM));
+		String configured = ChatPlugin.preference(ChatPlugin.PREF_PROGRAM);
+		File program = ClaudeCommand.program(configured);
+		if (program == null && configured != null && !configured.isBlank()) {
+			MessageDialog.openError(shell, "Resume a Conversation", //$NON-NLS-1$
+					"The program of Claude Code set in the preferences is not a file: " + configured.trim()); //$NON-NLS-1$
+			return;
+		}
 		String commandLine = CommandLine.quote(program == null ? "claude" : program.getPath()) + " --resume " + chosen.id(); //$NON-NLS-1$ //$NON-NLS-2$
 		try {
 			opener.open(page, commandLine, directory);
