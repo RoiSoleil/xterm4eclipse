@@ -1,20 +1,17 @@
 package org.eclipse.xterm4eclipse.claude;
 
 import java.io.File;
-import java.text.DateFormat;
-import java.util.Date;
 import java.util.List;
 
 import org.eclipse.core.commands.AbstractHandler;
 import org.eclipse.core.commands.ExecutionEvent;
 import org.eclipse.core.commands.ExecutionException;
 import org.eclipse.jface.dialogs.MessageDialog;
-import org.eclipse.jface.viewers.LabelProvider;
+import org.eclipse.jface.window.Window;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.PartInitException;
-import org.eclipse.ui.dialogs.ElementListSelectionDialog;
 import org.eclipse.ui.handlers.HandlerUtil;
 
 /**
@@ -60,25 +57,7 @@ public class ResumeHandler extends AbstractHandler {
 	}
 
 	private static Conversations.Conversation choose(Shell shell, File directory, List<Conversations.Conversation> conversations) {
-		DateFormat format = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT);
-		ElementListSelectionDialog dialog = new ElementListSelectionDialog(shell, new LabelProvider() {
-			@Override
-			public String getText(Object element) {
-				Conversations.Conversation conversation = (Conversations.Conversation) element;
-				return conversation.title() + "  \u2014  " + format.format(new Date(conversation.modified())); //$NON-NLS-1$
-			}
-		});
-		dialog.setTitle("Resume a Conversation"); //$NON-NLS-1$
-		dialog.setMessage("Conversations of Claude Code in " + directory.getPath() + ':'); //$NON-NLS-1$
-		dialog.setElements(conversations.toArray());
-		// The latest, which Enter resumes.
-		dialog.setInitialSelections(conversations.get(0));
-		dialog.setMultipleSelection(false);
-		dialog.setIgnoreCase(true);
-		dialog.setMatchEmptyString(true);
-		if (dialog.open() != ElementListSelectionDialog.OK) {
-			return null;
-		}
-		return (Conversations.Conversation) dialog.getFirstResult();
+		ConversationDialog dialog = new ConversationDialog(shell, directory, conversations);
+		return dialog.open() == Window.OK ? dialog.chosen() : null;
 	}
 }
