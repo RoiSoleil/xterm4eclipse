@@ -1548,6 +1548,68 @@ class XtermViewTest {
 		assertFalse(missing.exists(), "opening it does not create it");
 	}
 
+	@Test
+	void ctrlClickOnAFolderOpensItInTheFileManager() throws Exception {
+		Path directory = Files.createTempDirectory("xterm-folders");
+		Files.createDirectories(directory.resolve("build/reports"));
+		Files.writeString(directory.resolve("notes.txt"), "");
+		List<String> opened = new ArrayList<>();
+		XtermView view = open(new XtermView() {
+			@Override
+			void openFile(File file, int line, int column) {
+				opened.add("file " + file.getName());
+			}
+
+			@Override
+			void openFolder(File folder) {
+				opened.add("folder " + folder.getName());
+			}
+		});
+		run(view, "cd '" + shellPath(directory.toFile().getCanonicalFile()) + "' && echo \"see build/reports/, then notes.txt\"",
+				"then notes.txt");
+
+		awaitLink(view, "build/reports/");
+		click(view, "build/reports/", true);
+		await("folder opened", () -> opened.size() == 1);
+		assertEquals("folder reports", opened.get(0));
+		click(view, "notes.txt", true);
+		await("file opened", () -> opened.size() == 2);
+		assertEquals("file notes.txt", opened.get(1), "a file still opens in an editor");
+		deleteTree(directory);
+	}
+
+	@Test
+	void foldersAreFoundInTheOutput() throws Exception {
+		File directory = Files.createTempDirectory("xterm-folders").toFile().getCanonicalFile();
+		File reports = new File(directory, "build/reports");
+		Files.createDirectories(reports.toPath());
+		Files.writeString(new File(directory, "build/out.txt").toPath(), "");
+		assertEquals(reports, XtermView.resolveFolder("build/reports", directory));
+		assertEquals(reports, XtermView.resolveFolder("build/reports/", directory));
+		assertEquals(reports, XtermView.resolveFolder(reports.getPath() + File.separator, null), "absolute");
+		assertEquals(directory, XtermView.resolveFolder("build/..", directory));
+		assertNull(XtermView.resolveFolder("build/out.txt", directory), "a file is not a folder");
+		assertNull(XtermView.resolveFolder("build/missing/", directory));
+		assertNull(XtermView.resolveFolder("build", null), "relative, without the directory of the shell");
+		assertNull(XtermView.resolveFolder("/", directory), "the root is a word of the output");
+		assertNull(XtermView.resolveFolder(" ", directory));
+		assertNull(XtermView.resolveFolder(null, directory));
+		// from the root of the Git repository, as git prints them
+		File shellDirectory = new File(directory, "build/reports");
+		assertNull(XtermView.resolveFolder("build/reports", shellDirectory), "no repository");
+		Files.createDirectories(new File(directory, ".git").toPath());
+		assertEquals(reports, XtermView.resolveFolder("build/reports", shellDirectory));
+		String home = System.getProperty("user.home");
+		System.setProperty("user.home", directory.getPath());
+		try {
+			assertEquals(reports, XtermView.resolveFolder("~/build/reports", null));
+			assertEquals(directory, XtermView.resolveFolder("~", null));
+		} finally {
+			System.setProperty("user.home", home);
+		}
+		deleteTree(directory.toPath());
+	}
+
 	/**
 	 * Moves the mouse over the text until it is shown as a link: finding the directory of the shell
 	 * takes a while on macOS.

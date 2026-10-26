@@ -34,7 +34,7 @@ not want it.
 - Toolbar button and Ctrl+Alt+Shift+X to open a terminal.
 - Ctrl+Alt+T opens a terminal with the default shell, and Ctrl+Alt+Shift+T asks which of the shells found on
   the system to open: they replace the ones of the Terminal view of Eclipse (Local Terminal), whose *Show In >
-  Terminal* menus are hidden too. *Window > Preferences > General > Capabilities* shows them again (*Terminal*
+  Terminal* and *Show in Local Terminal* menus are hidden too. *Window > Preferences > General > Capabilities* shows them again (*Terminal*
   > *Show in Local Terminal*).
 - The tab shows the icon of the shell or program it runs (bash, zsh, fish, PowerShell, cmd, Git Bash,
   WSL), with a badge for a running command (orange dot) and for a finished command or a program
@@ -58,7 +58,9 @@ not want it.
 - Ctrl+click (Cmd+click on macOS) on a file path printed in the terminal opens it in an Eclipse
   editor, at the line and column given with it (`src/Foo.java:12:5`, `Foo.cs(12,5)`,
   `File "foo.py", line 12`). Relative paths are resolved from the directory of the shell. Ctrl+click on
-  a URL opens it in the browser.
+  a folder opens it in the file manager of the system (Explorer, Finder, the file manager of the
+  desktop; a package of macOS such as an `.app` is shown in its folder, never run). Ctrl+click on a URL
+  opens it in the browser.
 - *Rename…* in the view menu gives the terminal a fixed name, kept after a restart (the titles set by
   programs then only go to the tool tip; an empty name brings them back).
 - *Move to the Editor Area* / *Move Back to the Views* (tool bar): the terminal view moves to the
