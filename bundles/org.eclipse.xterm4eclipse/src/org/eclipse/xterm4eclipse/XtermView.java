@@ -534,10 +534,19 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			Object[] result = new Object[candidates.length];
 			File directory = candidates.length == 0 ? null : currentDirectory();
 			for (int i = 0; i < candidates.length; i++) {
-				File file = candidates[i] instanceof String text ? resolveFile(text, directory) : null;
-				result[i] = file == null ? null : file.getPath();
+				String text = candidates[i] instanceof String string ? string : null;
+				File file = resolveFile(text, directory);
+				File folder = file == null ? resolveFolder(text, directory) : null;
+				// A folder ends with a separator, which no file does: the page opens it in the file manager.
+				result[i] = file != null ? file.getPath() : folder != null ? folder.getPath() + File.separator : null;
 			}
 			return result;
+		});
+		function("javaOpenFolder", args -> { //$NON-NLS-1$
+			File folder = new File((String) args[0]);
+			// Not from within the call: the file manager may take a while to start.
+			display.asyncExec(() -> openFolder(folder));
+			return null;
 		});
 		function("javaOpenFile", args -> { //$NON-NLS-1$
 			File file = new File((String) args[0]);
@@ -649,6 +658,41 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	}
 
 	/**
+	 * @param path
+	 *            a path printed in the terminal, absolute, relative to the directory of the shell, to
+	 *            the root of its Git repository or to the home directory ({@code ~/...})
+	 * @return the folder, or {@code null} if there is no such folder, or it is the root of a disk
+	 */
+	static File resolveFolder(String path, File directory) {
+		// Only separators: the root, a word of the output (/) more often than a folder to open; on
+		// Windows it is not absolute, and would be the directory of the shell.
+		if (path == null || path.replaceAll("[\\\\/]", "").isBlank()) { //$NON-NLS-1$ //$NON-NLS-2$
+			return null;
+		}
+		String name = path;
+		if (name.equals("~") || name.startsWith("~/") || name.startsWith("~\\")) { //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+			name = System.getProperty("user.home") + name.substring(1); //$NON-NLS-1$
+		}
+		File folder = new File(name);
+		if (!folder.isAbsolute()) {
+			if (directory == null) {
+				return null;
+			}
+			folder = new File(directory, name);
+			if (!folder.isDirectory()) {
+				File inRepository = inEnclosingRepository(name, directory);
+				folder = inRepository != null ? inRepository : folder;
+			}
+		}
+		try {
+			folder = folder.getCanonicalFile();
+		} catch (IOException e) {
+			return null;
+		}
+		return folder.isDirectory() && folder.getParentFile() != null ? folder : null;
+	}
+
+	/**
 	 * Git prints the paths relative to the root of the repository, whatever the directory of the
 	 * shell in it ({@code create mode 100644 app/src/Main.java}).
 	 *
@@ -670,7 +714,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			return null;
 		}
 		File file = new File(root, path);
-		return file.isFile() ? file : null;
+		return file.exists() ? file : null;
 	}
 
 	/**
@@ -686,6 +730,27 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			// No IDE bundles: nothing to open the file with. It is never handed to the system, which
 			// could run it.
 			XtermPlugin.log("Cannot open " + file + " without the Eclipse IDE", e); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+	}
+
+	/**
+	 * Opens a folder the user clicked in the terminal in the file manager of the system: the Explorer
+	 * of Windows, the Finder, the file manager of the desktop on Linux.
+	 */
+	void openFolder(File folder) {
+		if (!folder.isDirectory()) {
+			return;
+		}
+		try {
+			if (IS_MAC) {
+				// A folder with an extension may be a package, such as an .app, which open would run: it is
+				// shown in its folder instead.
+				new ProcessBuilder("open", folder.getName().contains(".") ? "-R" : "--", folder.getPath()).start(); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+			} else {
+				Program.launch(folder.getPath());
+			}
+		} catch (IOException | RuntimeException e) {
+			XtermPlugin.log("Could not open the folder " + folder, e); //$NON-NLS-1$
 		}
 	}
 

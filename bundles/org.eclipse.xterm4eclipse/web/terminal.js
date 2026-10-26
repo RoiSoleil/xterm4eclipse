@@ -121,7 +121,8 @@
 		}));
 
 		// File paths printed by compilers, test runners, grep, git...: Ctrl+click opens them in Eclipse,
-		// at the line and column given with them (file:12:5, file(12,5), File "file", line 12).
+		// at the line and column given with them (file:12:5, file(12,5), File "file", line 12); a
+		// folder opens in the file manager of the system.
 		term.registerLinkProvider({
 			provideLinks: function (y, callback) {
 				var line = term.buffer.active.getLine(y - 1);
@@ -142,7 +143,13 @@
 						text: candidate.text,
 						decorations: { pointerCursor: true, underline: true },
 						activate: function (e) {
-							if (e.ctrlKey || e.metaKey) {
+							if (!(e.ctrlKey || e.metaKey)) {
+								return;
+							}
+							// A folder: its path ends with a separator.
+							if (/[\\\/]$/.test(file)) {
+								javaOpenFolder(file);
+							} else {
 								javaOpenFile(file, candidate.line, candidate.column);
 							}
 						}

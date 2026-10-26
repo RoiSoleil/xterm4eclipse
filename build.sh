@@ -6,6 +6,8 @@ cd "$(dirname "$0")"
 BUNDLE=bundles/org.eclipse.xterm4eclipse
 # The optional plug-in of the coding agents (Claude Code, Codex...): left out with --no-harness.
 HARNESS=bundles/org.eclipse.xterm4eclipse.harness
+# The chat with Claude Code, in the same feature: left out with --no-harness too.
+CLAUDE=bundles/org.eclipse.xterm4eclipse.claude
 : "${ECLIPSE_HOME:?Set ECLIPSE_HOME to your Eclipse installation directory}"
 INSTALL=
 WITH_HARNESS=yes
@@ -34,7 +36,7 @@ QUALIFIER=$(date +%Y%m%d%H%M%S)
 version() {
 	sed -n 's/^Bundle-Version: //p' "$1/META-INF/MANIFEST.MF" | sed "s/qualifier/$QUALIFIER/"
 }
-rm -rf bin dist && mkdir -p bin/terminal bin/harness dist
+rm -rf bin dist && mkdir -p bin/terminal bin/harness bin/claude dist
 
 VERSION=$(version $BUNDLE)
 JAR="dist/org.eclipse.xterm4eclipse_${VERSION}.jar"
@@ -53,11 +55,20 @@ if [ -n "$WITH_HARNESS" ]; then
 		-C "$HARNESS" META-INF/services
 	echo "Built $JAR"
 	JARS+=("$JAR")
+	VERSION=$(version $CLAUDE)
+	JAR="dist/org.eclipse.xterm4eclipse.claude_${VERSION}.jar"
+	javac --release 21 -nowarn -cp "$CP" -d bin/claude $(find $CLAUDE/src -name '*.java')
+	sed "s/^Bundle-Version: .*/Bundle-Version: ${VERSION}/" $CLAUDE/META-INF/MANIFEST.MF > bin/claude.MF
+	jar --create --file "$JAR" --manifest bin/claude.MF -C bin/claude org -C "$CLAUDE" plugin.xml -C "$CLAUDE" icons \
+		-C "$CLAUDE" web
+	echo "Built $JAR"
+	JARS+=("$JAR")
 fi
 if [ -n "$INSTALL" ]; then
 	mkdir -p "$ECLIPSE_HOME/dropins"
 	# Both plug-ins: with --no-harness the terminal is installed without the coding agents.
 	rm -f "$ECLIPSE_HOME"/dropins/org.eclipse.xterm4eclipse_*.jar "$ECLIPSE_HOME"/dropins/org.eclipse.xterm4eclipse.harness_*.jar \
+		"$ECLIPSE_HOME"/dropins/org.eclipse.xterm4eclipse.claude_*.jar \
 		"$ECLIPSE_HOME"/dropins/io.github.xtermview_*.jar
 	cp "${JARS[@]}" "$ECLIPSE_HOME/dropins/"
 	echo "Installed into $ECLIPSE_HOME/dropins (restart Eclipse with -clean)"

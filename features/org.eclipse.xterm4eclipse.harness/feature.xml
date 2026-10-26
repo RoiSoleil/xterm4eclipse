@@ -9,7 +9,8 @@
       What the terminals of Xterm4Eclipse know about the coding agents: Claude Code, Codex, OpenCode,
       Reasonix, Gemini CLI, GitHub Copilot CLI, Cursor Agent, Qwen Code, Kilo Code, Crush, Amp, goose
       and Aider. Their entries in the menus, their icons, their conversations when Eclipse reopens a
-      terminal, and the MCP server of Eclipse. The terminal works without it.
+      terminal, and the MCP server of Eclipse. And Claude Code Chat, a view that talks with Claude Code
+      as the Code tab of Claude Desktop does. The terminal works without it.
    </description>
 
    <license url="https://www.eclipse.org/legal/epl-v20.html">
@@ -22,6 +23,13 @@
 
    <plugin
          id="org.eclipse.xterm4eclipse.harness"
+         download-size="0"
+         install-size="0"
+         version="0.0.0"
+         unpack="false"/>
+
+   <plugin
+         id="org.eclipse.xterm4eclipse.claude"
          download-size="0"
          install-size="0"
          version="0.0.0"

@@ -113,7 +113,9 @@
             sequence="M1+M3+CR"/>
    </extension>
    <!-- The "Show In > Terminal" menus of the Terminal view of Eclipse are hidden: Xterm replaces them.
-        They are shown again by enabling the capability in Window > Preferences > General > Capabilities. -->
+        They are shown again by enabling the capability in Window > Preferences > General > Capabilities.
+        The activity hides their commands; the "Show in Local Terminal" menus that hold them are hidden with
+        it by LocalTerminalMenus, an activity does not hide a menu. -->
    <extension point="org.eclipse.ui.activities">
       <category
             id="org.eclipse.xterm4eclipse.category"
@@ -134,6 +136,9 @@
       <activityPatternBinding
             activityId="org.eclipse.xterm4eclipse.localTerminalMenus"
             pattern="org\.eclipse\.terminal\.connector\.local/org\.eclipse\.terminal\.connector\.local\.commands\.showin\.launch"/>
+   </extension>
+   <extension point="org.eclipse.ui.startup">
+      <startup class="org.eclipse.xterm4eclipse.LocalTerminalMenus"/>
    </extension>
    <extension point="org.eclipse.ui.menus">
       <menuContribution locationURI="popup:org.eclipse.ui.popup.any?after=additions">
