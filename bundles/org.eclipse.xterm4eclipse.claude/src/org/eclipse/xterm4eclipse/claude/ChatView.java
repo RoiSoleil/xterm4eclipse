@@ -806,6 +806,9 @@ public class ChatView extends ViewPart {
 				List<File> found = FileFinder.find(directory, path);
 				if (!found.isEmpty()) {
 					ChatPlugin.later(display, () -> {
+						if (browser.isDisposed()) {
+							return; // the chat was closed meanwhile
+						}
 						File chosen = found.size() == 1 ? found.get(0) : fileChooser.apply(found);
 						if (chosen != null) {
 							openEditor(chosen, line);
@@ -827,7 +830,7 @@ public class ChatView extends ViewPart {
 	}
 
 	private static File chooseFile(List<File> files) {
-		ElementListSelectionDialog dialog = new ElementListSelectionDialog(null, new LabelProvider() {
+		ElementListSelectionDialog dialog = new ElementListSelectionDialog(Display.getDefault().getActiveShell(), new LabelProvider() {
 			@Override
 			public String getText(Object element) {
 				return ((File) element).getPath();

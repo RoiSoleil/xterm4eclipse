@@ -114,9 +114,10 @@ final class Conversations {
 		try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
 			String line;
 			while ((line = reader.readLine()) != null) {
+				Map<String, Object> entry = null;
 				// Most lines are not of interest: not read as JSON.
 				if (line.contains("\"custom-title\"") || line.contains("\"ai-title\"") || line.contains("\"summary\"")) { //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
-					Map<String, Object> entry = Json.object(line);
+					entry = Json.object(line);
 					String type = Json.string(entry, "type"); //$NON-NLS-1$
 					if ("custom-title".equals(type)) { //$NON-NLS-1$
 						// An empty one is the name taken away.
@@ -132,7 +133,7 @@ final class Conversations {
 					// Another entry that mentions one of these words: maybe what the user said.
 				}
 				if (first == null && line.contains("\"type\":\"user\"")) { //$NON-NLS-1$
-					Map<String, Object> entry = Json.object(line);
+					entry = entry != null ? entry : Json.object(line);
 					String text = entry == null ? null : userText(entry);
 					if (text != null) {
 						first = text;

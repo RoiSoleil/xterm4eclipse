@@ -41,8 +41,9 @@ public class ResumeInTerminalHandler extends AbstractHandler {
 	}
 
 	/**
-	 * @return where the terminal is, when the command runs from a terminal (its button): that is the
-	 *         project whose conversations it resumes, not the one of the selection of the workbench
+	 * @return where the terminal is, when the command runs with a terminal as the active part (its
+	 *         button, or the menu while it has the focus): that is the folder whose conversations it
+	 *         resumes, as Claude Code keeps them by folder, not the project of the selection
 	 */
 	static File directory(IWorkbenchPart active, IWorkbenchPage page) {
 		File terminal = Terminals.directoryOf(active);

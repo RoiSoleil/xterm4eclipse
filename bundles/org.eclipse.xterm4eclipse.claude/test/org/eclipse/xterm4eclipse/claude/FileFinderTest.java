@@ -44,6 +44,19 @@ class FileFinderTest {
 	}
 
 	@Test
+	void looksInTheFoldersThatThePathGoesThrough() throws Exception {
+		File generated = file("app/build/generated/Foo.java");
+		file("other/node_modules/lib/Foo.java");
+		assertEquals(List.of(generated), FileFinder.find(temp.toFile(), "build/generated/Foo.java"), "named, so looked for");
+		assertTrue(FileFinder.find(temp.toFile(), "generated/Foo.java").isEmpty(), "a path that does not go through build: not in it");
+		assertTrue(FileFinder.find(temp.toFile(), "Foo.java").isEmpty(), "by its name only: not in what is built or fetched");
+		file("c/node_modules/bin");
+		assertTrue(FileFinder.find(temp.toFile(), "bin").isEmpty(), "the name of the file does not open the folders that are left out");
+		File dots = file("a/v1..2.txt");
+		assertEquals(List.of(dots), FileFinder.find(temp.toFile(), "v1..2.txt"), "two dots are not a parent folder");
+	}
+
+	@Test
 	void givesAllTheFilesOfTheSameNameInOrder() throws Exception {
 		File second = file("b/Same.js");
 		File first = file("a/Same.js");

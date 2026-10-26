@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -40,15 +41,22 @@ final class FileFinder {
 		while (wanted.startsWith("./")) { //$NON-NLS-1$
 			wanted = wanted.substring(2);
 		}
-		if (wanted.isEmpty() || wanted.startsWith("/") || wanted.contains("..") || directory == null || !directory.isDirectory()) { //$NON-NLS-1$ //$NON-NLS-2$
+		List<String> segments = List.of(wanted.split("/", -1)); //$NON-NLS-1$
+		if (wanted.isEmpty() || wanted.startsWith("/") || segments.contains("..") || directory == null || !directory.isDirectory()) { //$NON-NLS-1$ //$NON-NLS-2$
 			return found;
 		}
 		String ending = wanted;
+		// The folder that the path goes through is where it is looked for, ignored or not.
+		Set<String> ignored = new HashSet<>(IGNORED);
+		ignored.removeAll(segments.subList(0, segments.size() - 1)); // its folders, not its name
 		int[] visited = {0};
 		FileVisitor<Path> visitor = new SimpleFileVisitor<>() {
 			@Override
 			public FileVisitResult preVisitDirectory(Path folder, BasicFileAttributes attributes) {
-				return !folder.equals(directory.toPath()) && IGNORED.contains(folder.getFileName().toString()) ? FileVisitResult.SKIP_SUBTREE
+				if (++visited[0] > MAX_VISITED) {
+					return FileVisitResult.TERMINATE;
+				}
+				return !folder.equals(directory.toPath()) && ignored.contains(folder.getFileName().toString()) ? FileVisitResult.SKIP_SUBTREE
 						: FileVisitResult.CONTINUE;
 			}
 

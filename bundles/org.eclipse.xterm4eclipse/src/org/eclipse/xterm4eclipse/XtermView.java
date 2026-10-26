@@ -1226,6 +1226,12 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 					}
 					// A running command makes the view "dirty", so that closing it asks first.
 					if (busyChanged) {
+						// Another command begins: what the user said of closing the one before is over. Not
+						// when the command ends, which closing it may be the cause of.
+						PtySession busyNow = session;
+						if (busyNow != null && busyNow.isBusy()) {
+							closeConfirmed = false;
+						}
 						firePropertyChange(IWorkbenchPartConstants.PROP_DIRTY);
 					}
 					if (runningChanged && running) {
