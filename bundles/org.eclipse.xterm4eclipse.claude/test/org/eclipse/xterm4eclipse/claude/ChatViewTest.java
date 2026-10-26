@@ -576,6 +576,36 @@ class ChatViewTest {
 	}
 
 	@Test
+	void resumesAConversationInATerminal() throws Exception {
+		Shell parent = new Shell(DISPLAY);
+		shells.add(parent);
+		List<String> opened = new ArrayList<>();
+		ResumeHandler.Chooser previousChooser = ResumeHandler.chooser;
+		ResumeInTerminalHandler.Opener previousOpener = ResumeInTerminalHandler.opener;
+		try {
+			ResumeHandler.chooser = (shell, directory, conversations) -> conversations.get(0);
+			ResumeInTerminalHandler.opener = (target, commandLine, directory) -> opened.add(commandLine + " in " + directory.getName());
+			closeTheNextDialog();
+			ResumeInTerminalHandler.resume(parent, workbenchPage, project);
+			assertTrue(opened.isEmpty(), "none kept: nothing to resume");
+
+			keptConversation(ConversationsTest.ID);
+			ResumeInTerminalHandler.resume(parent, workbenchPage, project);
+			assertEquals(1, opened.size());
+			assertTrue(opened.get(0).contains("--resume " + ConversationsTest.ID + " in " + project.getName()), opened.get(0));
+
+			page.on("getSelection", args -> new StructuredSelection(new Fake()
+					.on("getURI", a -> new File(project, "a.txt").toURI()).as(IURIEditorInput.class)));
+			new ResumeInTerminalHandler().execute(event(null, null));
+			assertEquals(2, opened.size(), "the conversations of the project of the selection");
+			assertTrue(views.isEmpty(), "in a terminal, not in a chat");
+		} finally {
+			ResumeHandler.chooser = previousChooser;
+			ResumeInTerminalHandler.opener = previousOpener;
+		}
+	}
+
+	@Test
 	void editsTheSettings() {
 		Shell shell = new Shell(DISPLAY);
 		shells.add(shell);

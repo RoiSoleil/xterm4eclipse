@@ -37,15 +37,24 @@ public class ResumeHandler extends AbstractHandler {
 		return null;
 	}
 
-	/** Asks which conversation of the folder to resume, and opens it in a chat. */
-	static void resume(Shell shell, IWorkbenchPage page, File directory) {
+	/**
+	 * Asks which conversation of the folder to resume.
+	 *
+	 * @return the conversation, or {@code null} if the folder has none or the user chose none
+	 */
+	static Conversations.Conversation pick(Shell shell, File directory) {
 		List<Conversations.Conversation> conversations = Conversations.list(directory);
 		if (conversations.isEmpty()) {
 			MessageDialog.openInformation(shell, "Resume a Conversation", //$NON-NLS-1$
 					"Claude Code has kept no conversation for " + directory.getPath() + '.'); //$NON-NLS-1$
-			return;
+			return null;
 		}
-		Conversations.Conversation chosen = chooser.choose(shell, directory, conversations);
+		return chooser.choose(shell, directory, conversations);
+	}
+
+	/** Asks which conversation of the folder to resume, and opens it in a chat. */
+	static void resume(Shell shell, IWorkbenchPage page, File directory) {
+		Conversations.Conversation chosen = pick(shell, directory);
 		if (chosen == null) {
 			return;
 		}

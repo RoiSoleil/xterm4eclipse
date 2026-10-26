@@ -36,6 +36,11 @@
             name="Resume a Claude Code Conversation..."
             description="Resumes in a chat a conversation that Claude Code has kept for the project of the selection"/>
       <command
+            id="org.eclipse.xterm4eclipse.claude.resumeInTerminal"
+            categoryId="org.eclipse.xterm4eclipse.claude.commands"
+            name="Resume a Claude Code Conversation in a Terminal..."
+            description="Resumes in a new terminal a conversation that Claude Code has kept for the project of the selection"/>
+      <command
             id="org.eclipse.xterm4eclipse.claude.ask"
             categoryId="org.eclipse.xterm4eclipse.claude.commands"
             name="Ask Claude Code"
@@ -49,12 +54,18 @@
             commandId="org.eclipse.xterm4eclipse.claude.resume"
             class="org.eclipse.xterm4eclipse.claude.ResumeHandler"/>
       <handler
+            commandId="org.eclipse.xterm4eclipse.claude.resumeInTerminal"
+            class="org.eclipse.xterm4eclipse.claude.ResumeInTerminalHandler"/>
+      <handler
             commandId="org.eclipse.xterm4eclipse.claude.ask"
             class="org.eclipse.xterm4eclipse.claude.AskClaudeHandler"/>
    </extension>
    <extension point="org.eclipse.ui.commandImages">
       <image
             commandId="org.eclipse.xterm4eclipse.claude.newChat"
+            icon="icons/claude.png"/>
+      <image
+            commandId="org.eclipse.xterm4eclipse.claude.resumeInTerminal"
             icon="icons/claude.png"/>
       <image
             commandId="org.eclipse.xterm4eclipse.claude.ask"
@@ -83,6 +94,9 @@
             <command
                   commandId="org.eclipse.xterm4eclipse.claude.resume"
                   label="&amp;Resume a Conversation..."/>
+            <command
+                  commandId="org.eclipse.xterm4eclipse.claude.resumeInTerminal"
+                  label="Resume a Conversation in a &amp;Terminal..."/>
             <command
                   commandId="org.eclipse.xterm4eclipse.claude.ask"
                   label="&amp;Ask Claude Code">
@@ -115,6 +129,12 @@
                </with>
             </visibleWhen>
          </command>
+      </menuContribution>
+      <menuContribution locationURI="toolbar:org.eclipse.xterm4eclipse.view">
+         <command
+               commandId="org.eclipse.xterm4eclipse.claude.resumeInTerminal"
+               tooltip="Resume a Claude Code Conversation in a new terminal"
+               style="push"/>
       </menuContribution>
       <menuContribution locationURI="toolbar:org.eclipse.ui.main.toolbar?after=additions">
          <toolbar id="org.eclipse.xterm4eclipse.claude.toolbar">

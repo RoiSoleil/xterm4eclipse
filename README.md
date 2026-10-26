@@ -66,7 +66,7 @@ without the second one: leave it unchecked if you do not want it.
 - *Move to the Editor Area* / *Move Back to the Views* (tool bar): the terminal view moves to the
   editor area, next to the active editor, and back to where it came from, as when its tab is dragged
   there. It is the same view: the shell, the program and the screen stay as they are. Eclipse keeps
-  it there after a restart.
+  it there after a restart. The chat with Claude Code (see below) has the same button.
 - Find in the terminal (Ctrl+Shift+F, Cmd+F on macOS, or *Find…* in the view menu): every match is
   highlighted, Enter / Shift+Enter go to the next / previous one, with case, whole word and regular
   expression options.
@@ -155,9 +155,11 @@ Claude Desktop: it runs the `claude` program of the computer, which must be inst
 - *Ask Claude Code* (context menu of the editors and of the resources, Ctrl+Alt+Shift+K in an editor)
   adds the selected lines (`@src/Foo.java#L10-20`) or files to the message of the last chat.
 - The conversations are those of the CLI and of Claude Desktop (`~/.claude/projects`): *Resume a
-  Conversation...* lists those of the project, and a chat that Eclipse reopens shows its messages and
-  goes on with it (`claude --resume`). A conversation of the chat can be resumed in a terminal the same
-  way.
+  Conversation...* lists those of the project, the latest first (a filter field narrows the list by
+  title or date), and a chat that Eclipse reopens shows its messages and goes on with it
+  (`claude --resume`). A conversation of the chat can be resumed in a terminal the same way, and the
+  tool bar of the terminal view, like the menu *Claude*, has *Resume a Conversation in a Terminal...*:
+  the same list, and `claude --resume` runs in a new terminal in the project.
 - *Window > Preferences > Xterm Terminal > Claude Code Chat*: the program of Claude Code (else `claude`
   on the PATH or where its installer puts it), the model and the permission mode of new chats, more
   arguments, and whether a new chat continues the last conversation of its project.

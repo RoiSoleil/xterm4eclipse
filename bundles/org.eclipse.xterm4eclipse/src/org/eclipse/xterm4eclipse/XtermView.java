@@ -962,7 +962,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	 * @param directory
 	 *            where the shell starts, or {@code null} for the project of the selection
 	 */
-	static void open(IWorkbenchPage page, String shellCommandLine, File directory) throws PartInitException {
+	public static void open(IWorkbenchPage page, String shellCommandLine, File directory) throws PartInitException {
 		open(page, shellCommandLine, directory, null, null);
 	}
 
