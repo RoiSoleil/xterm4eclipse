@@ -45,9 +45,9 @@ public class ResumeInTerminalHandler extends AbstractHandler {
 		if (chosen == null) {
 			return;
 		}
-		// Not a file name that the shell would take for more than an argument, or the CLI for an option.
-		if (!chosen.id().matches("[A-Za-z0-9_][A-Za-z0-9_-]*")) { //$NON-NLS-1$
-			ChatPlugin.log("Did not resume the conversation " + chosen.id() + ": its id is not a plain one", null); //$NON-NLS-1$ //$NON-NLS-2$
+		// Only the ids of Claude Code, which are UUIDs: a command line takes nothing else for the argument of --resume.
+		if (!ClaudeCommand.SESSION_ID.matcher(chosen.id()).matches()) {
+			ChatPlugin.log("Did not resume the conversation " + chosen.id() + ": its id is not one of Claude Code", null); //$NON-NLS-1$ //$NON-NLS-2$
 			return;
 		}
 		// The program of the preferences of the chat, or else the one that Eclipse finds.

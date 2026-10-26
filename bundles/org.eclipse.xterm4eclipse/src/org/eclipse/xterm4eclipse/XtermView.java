@@ -935,12 +935,16 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	 * there.
 	 */
 	void moveToEditorArea() {
-		moveAction.moveToEditorArea();
+		if (moveAction != null) {
+			moveAction.moveToEditorArea();
+		}
 	}
 
 	/** Moves this view back among the views, where it came from if that place still exists. */
 	void moveToViews() {
-		moveAction.moveToViews();
+		if (moveAction != null) {
+			moveAction.moveToViews();
+		}
 	}
 
 	private void openTerminal(String shellCommandLine) {
