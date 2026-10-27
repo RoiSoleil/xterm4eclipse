@@ -14,6 +14,7 @@
 	var working = document.getElementById("working");
 	var sendButton = document.getElementById("send");
 	var stopButton = document.getElementById("stop");
+	var attachments = document.getElementById("attachments");
 
 	var config = {};
 	/** The cards of the tools, by the id of their use. */
@@ -130,18 +131,133 @@
 
 	// What the user does.
 
+	/** The images pasted or dropped, until the message is sent; each with its media type and base64 data. */
+	var images = [];
+	/** The API takes these formats, up to 5 MB each (counted on the base64 data, to be safe). */
+	var IMAGE_TYPES = /^image\/(png|jpeg|gif|webp)$/;
+	var MAX_IMAGE = 5 * 1024 * 1024;
+	/** What Java keeps of a message: its count and, under the 32 MB of a request of the API, its total. */
+	var MAX_IMAGES = 20;
+	var MAX_TOTAL = 25 * 1024 * 1024;
+	/** The images that are still being read, and whether the user sent the message meanwhile. */
+	var reading = 0;
+	var sendWhenRead = false;
+
+	function showAttachments() {
+		attachments.textContent = "";
+		images.forEach(function (image, index) {
+			var item = element("div", "attachment");
+			var thumbnail = element("img");
+			thumbnail.src = dataUrl(image);
+			item.appendChild(thumbnail);
+			var remove = element("button", null, "\u00d7");
+			remove.title = "Remove the image";
+			remove.addEventListener("click", function () {
+				images.splice(index, 1);
+				showAttachments();
+				input.focus();
+			});
+			item.appendChild(remove);
+			attachments.appendChild(item);
+		});
+		attachments.classList.toggle("some", images.length > 0);
+	}
+
+	function dataUrl(image) {
+		return "data:" + image.media_type + ";base64," + image.data;
+	}
+
+	function addImages(files) {
+		var refused = false;
+		Array.prototype.forEach.call(files, function (file) {
+			if (!IMAGE_TYPES.test(file.type)) {
+				refused = true;
+				return;
+			}
+			reading++;
+			var reader = new FileReader();
+			reader.onload = function () {
+				var match = /^data:([^;]+);base64,(.*)$/.exec(reader.result);
+				if (!match || !match[2]) {
+					notice("error", "The image is empty.");
+					return;
+				}
+				var total = images.reduce(function (sum, image) { return sum + image.data.length; }, match[2].length);
+				if (match[2].length > MAX_IMAGE) {
+					notice("error", "The image is too large: Claude Code takes images up to 5 MB.");
+				} else if (images.length >= MAX_IMAGES || total > MAX_TOTAL) {
+					notice("error", "Too many images for one message.");
+				} else {
+					images.push({ media_type: match[1], data: match[2] });
+					showAttachments();
+				}
+			};
+			reader.onerror = function () {
+				sendWhenRead = false;
+				notice("error", "The image could not be read.");
+			};
+			reader.onloadend = function () {
+				reading--;
+				if (reading === 0 && sendWhenRead) {
+					sendWhenRead = false;
+					send();
+				}
+			};
+			reader.readAsDataURL(file);
+		});
+		if (refused) {
+			notice("error", "Claude Code takes PNG, JPEG, GIF and WebP images only.");
+		}
+	}
+
 	function send() {
 		var text = input.value;
-		if (!text.trim()) {
+		if (reading > 0) {
+			// An image is still being read: it goes with this message.
+			sendWhenRead = true;
 			return;
 		}
+		if (!text.trim() && images.length === 0) {
+			return;
+		}
+		var sent = images;
+		images = [];
+		showAttachments();
 		input.value = "";
 		resize();
 		following = true;
-		showUser(text);
+		showUser(text, sent);
 		setTurns(turns + 1);
-		javaSend(text);
+		javaSend(text, sent.length ? JSON.stringify(sent) : "");
 	}
+
+	// An image of the clipboard is attached; a text, even with an image (a copy from a page), is pasted as usual.
+	input.addEventListener("paste", function (e) {
+		var data = e.clipboardData;
+		if (!data || !data.files || data.files.length === 0) {
+			return;
+		}
+		if (data.getData("text/plain")) {
+			return;
+		}
+		e.preventDefault();
+		addImages(data.files);
+	});
+	// Only files are taken: the drag and drop of text into the input stays the browser's.
+	function hasFiles(e) {
+		return e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], "Files") >= 0;
+	}
+	document.addEventListener("dragover", function (e) {
+		if (hasFiles(e)) {
+			e.preventDefault();
+		}
+	});
+	document.addEventListener("drop", function (e) {
+		if (hasFiles(e)) {
+			e.preventDefault();
+			addImages(e.dataTransfer.files);
+		}
+	});
 
 	function resize() {
 		input.style.height = "auto";
@@ -192,9 +308,21 @@
 
 	// The messages.
 
-	function showUser(text) {
+	/** @param pictures the images of the message, each with its media type and base64 data */
+	function showUser(text, pictures) {
 		var bubble = add(element("div", "message user"));
-		bubble.appendChild(element("div", "user-text", text));
+		var body = bubble.appendChild(element("div", "user-text"));
+		if (pictures && pictures.length) {
+			var shown = body.appendChild(element("div", "user-images"));
+			pictures.forEach(function (picture) {
+				var image = element("img");
+				image.src = dataUrl(picture);
+				shown.appendChild(image);
+			});
+		}
+		if (text) {
+			body.appendChild(element("div", null, text));
+		}
 		return bubble;
 	}
 
@@ -389,6 +517,24 @@
 	}
 
 	function showResults(blocks, parent) {
+		var answers = blocks.some(function (block) { return block.type === "tool_result"; });
+		if (!parent && !answers) {
+			// A message of the user with images, as it is in a conversation that is resumed.
+			var pictures = blocks.filter(function (block) {
+				return block.type === "image" && block.source && block.source.data;
+			}).map(function (block) {
+				return { media_type: block.source.media_type, data: block.source.data };
+			});
+			if (pictures.length) {
+				var texts = blocks.filter(function (block) {
+					return block.type === "text" && block.text;
+				});
+				showUser(texts.map(function (block) { return block.text; }).join("\n"), pictures);
+				blocks = blocks.filter(function (block) {
+					return block.type !== "text" && block.type !== "image";
+				});
+			}
+		}
 		blocks.forEach(function (block) {
 			if (block.type === "tool_result") {
 				var card = tools[block.tool_use_id];

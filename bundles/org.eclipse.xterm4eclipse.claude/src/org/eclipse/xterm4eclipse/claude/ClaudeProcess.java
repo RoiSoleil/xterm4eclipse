@@ -8,6 +8,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -144,6 +145,27 @@ final class ClaudeProcess {
 	/** Sends a message of the user. */
 	void sendUser(String text) {
 		send(Map.of("type", "user", "message", Map.of("role", "user", "content", text))); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
+	}
+
+	/**
+	 * Sends a message of the user with images.
+	 *
+	 * @param images each with its {@code media_type} and its base64 {@code data}
+	 */
+	void sendUser(String text, List<Map<String, String>> images) {
+		if (images.isEmpty()) {
+			sendUser(text);
+			return;
+		}
+		List<Object> blocks = new ArrayList<>();
+		for (Map<String, String> image : images) {
+			blocks.add(Map.of("type", "image", "source", Map.of("type", "base64", "media_type", image.get("media_type"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
+					"data", image.get("data")))); //$NON-NLS-1$ //$NON-NLS-2$
+		}
+		if (!text.isBlank()) {
+			blocks.add(Map.of("type", "text", "text", text)); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		}
+		send(Map.of("type", "user", "message", Map.of("role", "user", "content", blocks))); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
 	}
 
 	/**

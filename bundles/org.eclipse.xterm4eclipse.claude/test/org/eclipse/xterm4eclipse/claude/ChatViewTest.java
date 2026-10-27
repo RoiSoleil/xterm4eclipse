@@ -301,6 +301,36 @@ class ChatViewTest {
 	}
 
 	@Test
+	void readsTheImagesThatThePageSends() {
+		assertEquals(List.of(Map.of("media_type", "image/png", "data", "QUJD")),
+				ChatView.images("[{\"media_type\":\"image/png\",\"data\":\"QUJD\"}]"));
+		assertEquals(List.of(), ChatView.images("[{\"media_type\":\"text/html\",\"data\":\"QUJD\"},{\"data\":\"x\"}]"),
+				"only images with their data");
+		assertEquals(List.of(), ChatView.images("[{\"media_type\":\"image/svg+xml\",\"data\":\"QUJD\"},{\"media_type\":\"image/png\",\"data\":\"<script>\"}]"),
+				"the formats of the API, and base64");
+		assertEquals(List.of(), ChatView.images(""));
+		assertEquals(List.of(), ChatView.images(null));
+		assertEquals(List.of(), ChatView.images("{}"));
+	}
+
+	@Test
+	void sendsTheImagePastedInTheInput() throws Exception {
+		ChatView view = open(null);
+		// A 1x1 PNG, as the clipboard of a screenshot gives it.
+		String png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+		view.browser.execute("var bytes = Uint8Array.from(atob('" + png + "'), function (c) { return c.charCodeAt(0); });"
+				+ "var data = new DataTransfer(); data.items.add(new File([bytes], 'screenshot.png', {type: 'image/png'}));"
+				+ "document.getElementById('input').dispatchEvent(new ClipboardEvent('paste', {clipboardData: data, bubbles: true, cancelable: true}));");
+		await("the thumbnail", () -> Boolean.TRUE.equals(view.browser.evaluate("return document.querySelectorAll('#attachments img').length === 1")));
+		say(view, "what is it?");
+		awaitText(view, "You said:");
+		assertEquals(Boolean.TRUE, view.browser.evaluate("return document.querySelectorAll('.user-images img').length === 1"), "shown with the message");
+		assertEquals(Boolean.TRUE, view.browser.evaluate("return document.querySelectorAll('#attachments img').length === 0"), "the attachments are empty again");
+		String message = read().get(1);
+		assertTrue(message.contains("\"type\":\"image\"") && message.contains(png) && message.contains("what is it?"), message);
+	}
+
+	@Test
 	void talksWithClaudeCode() throws Exception {
 		ChatView view = open(null);
 		assertEquals(project, view.directory());

@@ -11,8 +11,10 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 
 import org.eclipse.jface.action.Action;
 import org.eclipse.jface.action.IToolBarManager;
@@ -300,8 +302,9 @@ public class ChatView extends ViewPart {
 	private void registerFunctions() {
 		function("javaSend", args -> { //$NON-NLS-1$
 			if (args.length > 0 && args[0] instanceof String text) {
+				List<Map<String, String>> images = images(args.length > 1 ? args[1] : null);
 				// Not from within the call: it may run a script in the page.
-				display.asyncExec(() -> send(text));
+				display.asyncExec(() -> send(text, images));
 			}
 			return null;
 		});
@@ -438,16 +441,42 @@ public class ChatView extends ViewPart {
 
 	// Claude Code.
 
-	/** Sends a message of the user, starting Claude Code if it does not run. */
-	void send(String text) {
-		if (text.isBlank() || browser.isDisposed()) {
+	/** Sends a message of the user with images, starting Claude Code if it does not run. */
+	void send(String text, List<Map<String, String>> images) {
+		if ((text.isBlank() && images.isEmpty()) || browser.isDisposed()) {
 			return;
 		}
 		if ((claude == null || !claude.isAlive()) && !start()) {
 			return;
 		}
-		claude.sendUser(text);
+		claude.sendUser(text, images);
 		setTurns(turns + 1);
+	}
+
+	/** The formats of image that the API takes, the number of images of a message and the size of the data of one. */
+	private static final Set<String> IMAGE_TYPES = Set.of("image/png", "image/jpeg", "image/gif", "image/webp"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+	private static final int MAX_IMAGES = 20;
+	private static final int MAX_IMAGE_DATA = 5 * 1024 * 1024;
+	private static final int MAX_TOTAL_DATA = 25 * 1024 * 1024;
+	private static final Pattern BASE64 = Pattern.compile("[A-Za-z0-9+/]+={0,2}"); //$NON-NLS-1$
+
+	/** @return the images the page sends as a JSON array of {@code media_type} and base64 {@code data} */
+	static List<Map<String, String>> images(Object json) {
+		List<Map<String, String>> images = new ArrayList<>();
+		if (json instanceof String text && !text.isEmpty() && Json.parse(text) instanceof List<?> list) {
+			int total = 0;
+			for (Object item : list) {
+				if (images.size() < MAX_IMAGES && item instanceof Map<?, ?> map
+						&& map.get("media_type") instanceof String type && IMAGE_TYPES.contains(type) //$NON-NLS-1$
+						&& map.get("data") instanceof String data && data.length() <= MAX_IMAGE_DATA //$NON-NLS-1$
+						&& total + data.length() <= MAX_TOTAL_DATA && data.length() % 4 == 0
+						&& BASE64.matcher(data).matches()) {
+					total += data.length();
+					images.add(Map.of("media_type", type, "data", data)); //$NON-NLS-1$ //$NON-NLS-2$
+				}
+			}
+		}
+		return images;
 	}
 
 	/** @return {@code true} if Claude Code has started */
@@ -587,6 +616,9 @@ public class ChatView extends ViewPart {
 				result.put("tool_use_id", map.get("tool_use_id")); //$NON-NLS-1$ //$NON-NLS-2$
 				result.put("is_error", map.get("is_error")); //$NON-NLS-1$ //$NON-NLS-2$
 				result.put("text", map.get("text")); //$NON-NLS-1$ //$NON-NLS-2$
+				if ("image".equals(map.get("type"))) { //$NON-NLS-1$ //$NON-NLS-2$
+					result.put("source", map.get("source")); //$NON-NLS-1$ //$NON-NLS-2$
+				}
 				result.put("content", resultText(map.get("content"))); //$NON-NLS-1$ //$NON-NLS-2$
 				results.add(result);
 				if (map.get("tool_use_id") instanceof String toolUseId && change(toolUseId, message, live)) { //$NON-NLS-1$

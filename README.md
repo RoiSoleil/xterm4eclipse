@@ -149,7 +149,8 @@ Claude Desktop: it runs the `claude` program of the computer, which must be inst
   (*Ask before edits*, *Accept edits*, *Plan mode*) and the model are chosen below the message, also
   while Claude Code works.
 - Enter sends, Shift+Enter starts a new line, Escape or *Stop* interrupts Claude Code. `@file` mentions
-  a file, as in the CLI.
+  a file, as in the CLI. An image pasted from the clipboard or dropped on the view (PNG, JPEG, GIF or
+  WebP, 20 at most, 5 MB each and 25 MB in all) goes with the message, alone or with a text.
 - *Compare* on the card of an Edit or a Write shows the change in the compare editor of Eclipse; a file
   path in a message (`src/Foo.java:12`) opens in an editor; the workspace is refreshed after the changes.
 - *Ask Claude Code* (context menu of the editors and of the resources, Ctrl+Alt+Shift+K in an editor)

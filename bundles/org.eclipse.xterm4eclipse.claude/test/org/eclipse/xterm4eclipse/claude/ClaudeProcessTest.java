@@ -116,6 +116,24 @@ class ClaudeProcessTest {
 	}
 
 	@Test
+	void sendsImagesAsBlocksBeforeTheText() throws Exception {
+		start().sendUser("what is it?", List.of(Map.of("media_type", "image/png", "data", "QUJD")));
+		next(type("result"));
+		Map<String, Object> message = Json.object(FakeClaude.lines(temp.resolve("log")).get(1));
+		assertEquals(Map.of("type", "user", "message", Map.of("role", "user", "content",
+				List.of(Map.of("type", "image", "source", Map.of("type", "base64", "media_type", "image/png", "data", "QUJD")),
+						Map.of("type", "text", "text", "what is it?")))),
+				message);
+	}
+
+	@Test
+	void sendsAnImageAloneWithoutEmptyText() throws Exception {
+		start().sendUser("", List.of(Map.of("media_type", "image/png", "data", "QUJD")));
+		next(type("result"));
+		assertEquals(1, Json.list(Json.object(Json.object(FakeClaude.lines(temp.resolve("log")).get(1)), "message"), "content").size());
+	}
+
+	@Test
 	void answersTheRequestsOfPermission() throws Exception {
 		start().sendUser("edit");
 		Map<String, Object> request = next(type("control_request"));
