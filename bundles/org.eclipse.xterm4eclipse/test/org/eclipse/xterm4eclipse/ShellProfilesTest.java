@@ -239,4 +239,21 @@ class ShellProfilesTest {
 		assertTrue(file.toFile().setExecutable(true));
 		return file;
 	}
+
+	@Test
+	void shellsGivenOnlyOptionsStartAtAPrompt() {
+		assertTrue(ShellProfiles.startsAtAPrompt("/bin/bash"));
+		assertTrue(ShellProfiles.startsAtAPrompt("\"C:\\Program Files\\Git\\bin\\bash.exe\" --login -i"));
+		assertTrue(ShellProfiles.startsAtAPrompt("powershell.exe -NoLogo"));
+		assertTrue(ShellProfiles.startsAtAPrompt("cmd.exe"));
+		// They ask the terminal what it can do, or draw a screen at once.
+		assertFalse(ShellProfiles.startsAtAPrompt("fish"));
+		assertFalse(ShellProfiles.startsAtAPrompt("claude"));
+		assertFalse(ShellProfiles.startsAtAPrompt("bash ./menu.sh"));
+		assertFalse(ShellProfiles.startsAtAPrompt("bash -c top"));
+		assertFalse(ShellProfiles.startsAtAPrompt("cmd.exe /k tool.bat"));
+		assertFalse(ShellProfiles.startsAtAPrompt("pwsh -File menu.ps1"));
+		assertFalse(ShellProfiles.startsAtAPrompt("pwsh -Command top"));
+		assertFalse(ShellProfiles.startsAtAPrompt(""));
+	}
 }

@@ -222,6 +222,30 @@ final class ShellProfiles {
 		return name.toLowerCase().matches(".*\\.(exe|cmd|bat)") ? name.substring(0, name.length() - 4) : name; //$NON-NLS-1$
 	}
 
+	/** The shells that only print a prompt and wait, without asking the terminal what it can do as fish does. */
+	private static final Set<String> PROMPT_SHELLS = Set.of("bash", "zsh", "sh", "dash", "ksh", "mksh", "ash", "cmd", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$ //$NON-NLS-8$
+			"powershell", "pwsh"); //$NON-NLS-1$ //$NON-NLS-2$
+
+	/**
+	 * @return {@code true} if the command line starts a shell that prints its prompt and waits: given
+	 *         options only, not a script or a command to run, which may draw a screen at once
+	 */
+	static boolean startsAtAPrompt(String commandLine) {
+		String[] arguments = parse(commandLine);
+		if (arguments.length == 0 || !PROMPT_SHELLS.contains(displayName(commandLine).toLowerCase())) {
+			return false;
+		}
+		for (int i = 1; i < arguments.length; i++) {
+			String argument = arguments[i].toLowerCase();
+			// -c, -Command, -File and the like run something else than the shell.
+			if (!argument.startsWith("-") || argument.equals("-c") || argument.startsWith("-co") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+					|| argument.startsWith("-f") || argument.startsWith("-e")) { //$NON-NLS-1$ //$NON-NLS-2$
+				return false;
+			}
+		}
+		return true;
+	}
+
 	private static final Set<String> SHELLS = Set.of("bash", "zsh", "fish", "sh", "dash", "ksh", "mksh", "ash", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$ //$NON-NLS-8$
 			"csh", "tcsh", "nu", "xonsh", "elvish", "cmd", "powershell", "pwsh", "wsl"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$ //$NON-NLS-8$ //$NON-NLS-9$
 

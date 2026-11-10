@@ -202,33 +202,88 @@ class XtermViewTest {
 
 	/**
 	 * The browser takes its time to load the page, and a login shell such as Git Bash to print its first
-	 * prompt: the shell starts while the page loads, its output waits for the page and it gets the
-	 * size of the page afterwards.
+	 * prompt: the shell starts while the page loads, at the size of the last terminal, and its output
+	 * waits for the page.
 	 */
 	@Test
 	void shellStartsWhileThePageLoads() throws Exception {
-		boolean[] started = new boolean[1];
+		// A first terminal tells the size of the next one.
+		open();
+		int[] early = new int[1];
 		XtermView view = open(new XtermView() {
 			@Override
 			public void createPartControl(Composite parent) {
 				super.createPartControl(parent);
-				started[0] = shellStarted();
+				early[0] = shellsStarted();
 			}
 		});
 
-		assertTrue(started[0], "shell started when the view is created");
-		// The prompt was printed before the page could show it, and was not lost (open waits for it).
-		Object rows = view.browser.evaluate("return document.querySelector('.xterm-rows').children.length");
-		String expected = "rows=" + ((Number) rows).intValue();
-		for (int attempt = 0; attempt < 3 && !screen(view).contains("\n" + expected); attempt++) {
-			type(view, "\u0015echo rows=$(stty size | cut -d' ' -f1)\r");
-			try {
-				await("output", () -> screen(view).contains("\n" + expected), 5000);
-			} catch (AssertionError e) {
-				// Typed again, see shellFollowsTheSizeOfTheView.
+		assertEquals(1, early[0], "shell started when the view is created");
+		// The prompt, printed before the page could show it, is on the screen: open waits for it.
+		run(view, "echo kept-$((40+2))", "kept-42");
+		assertEquals(1, view.shellsStarted(), "the shell started early is the one of the page");
+	}
+
+	/** The output of a shell started at another size than the page is laid out for that size: a new shell replaces it. */
+	@Test
+	void shellStartedAtAnotherSizeThanThePageStartsAgain() throws Exception {
+		XtermView.lastCols = 20;
+		XtermView.lastRows = 5;
+		int[] early = new int[1];
+		XtermView view = open(new XtermView() {
+			@Override
+			public void createPartControl(Composite parent) {
+				super.createPartControl(parent);
+				early[0] = shellsStarted();
 			}
-		}
-		assertTrue(screen(view).contains("\n" + expected), screen(view));
+		});
+
+		assertEquals(1, early[0], "shell started when the view is created");
+		assertEquals(2, view.shellsStarted(), "started again at the size of the page");
+		Object rows = view.browser.evaluate("return document.querySelector('.xterm-rows').children.length");
+		assertNotEquals(5, ((Number) rows).intValue());
+		run(view, "echo rows=$(stty size | cut -d' ' -f1)", "rows=" + ((Number) rows).intValue());
+	}
+
+	/** A program may draw its screen at once or ask the terminal what it can do: only the page answers. */
+	@Test
+	void programsThatAreNotShellsWaitForThePage() throws Exception {
+		ShellProfiles.setDefaultCommandLine("cat");
+		XtermView.lastCols = 80;
+		XtermView.lastRows = 24;
+		boolean[] started = { true };
+		XtermView view = new XtermView() {
+			@Override
+			public void createPartControl(Composite parent) {
+				super.createPartControl(parent);
+				started[0] = shellsStarted() > 0;
+			}
+		};
+		workbench.open(view, null, null);
+
+		assertFalse(started[0], "not started before the page is loaded");
+		await("program started by the page", () -> view.shellsStarted() == 1);
+		type(view, "echoed-by-cat\r");
+		await("output", () -> screen(view).contains("echoed-by-cat\r\nechoed-by-cat") || screen(view).split("echoed-by-cat", -1).length > 2);
+	}
+
+	/** Without the size of a terminal to go by, the shell waits for the page. */
+	@Test
+	void firstShellWaitsForThePageWhenNoSizeIsKnown() throws Exception {
+		XtermView.lastCols = 0;
+		XtermView.lastRows = 0;
+		boolean[] started = { true };
+		XtermView view = open(new XtermView() {
+			@Override
+			public void createPartControl(Composite parent) {
+				super.createPartControl(parent);
+				started[0] = shellsStarted() > 0;
+			}
+		});
+
+		assertFalse(started[0], "not started before the page is loaded");
+		run(view, "echo after-$((2+3))", "after-5");
+		assertTrue(XtermView.lastCols > 0 && XtermView.lastRows > 0, "size kept for the next terminal");
 	}
 
 	/** The BrowserFunctions of the browser, kept by SWT. */

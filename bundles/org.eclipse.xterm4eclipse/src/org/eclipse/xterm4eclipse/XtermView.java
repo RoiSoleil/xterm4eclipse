@@ -119,8 +119,11 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	private static final String MEMENTO_SHELL = "shell"; //$NON-NLS-1$
 	private static final String MEMENTO_DIRECTORY = "directory"; //$NON-NLS-1$
 	private static final String MEMENTO_NAME = "name"; //$NON-NLS-1$
+	private static final String MEMENTO_COLUMNS = "columns"; //$NON-NLS-1$
+	private static final String MEMENTO_ROWS = "rows"; //$NON-NLS-1$
 	/** The values of the view itself in its memento: the others are those of the extensions. */
-	private static final Set<String> MEMENTO_KEYS = Set.of(MEMENTO_SHELL, MEMENTO_DIRECTORY, MEMENTO_NAME);
+	private static final Set<String> MEMENTO_KEYS = Set.of(MEMENTO_SHELL, MEMENTO_DIRECTORY, MEMENTO_NAME,
+			MEMENTO_COLUMNS, MEMENTO_ROWS);
 
 	/** How long the browser may stay hidden while its page loads: the first WebView2 takes seconds. */
 	static int revealTimeoutMillis = 5000;
@@ -217,13 +220,22 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	private volatile boolean closeConfirmed;
 	private int cols = 80;
 	private int rows = 24;
-	/** The size of the last terminal that was laid out: the best guess for one whose page is not loaded yet. */
-	private static int lastCols = 80;
-	private static int lastRows = 24;
+	/** The size of the last terminal that was laid out: the guess for a new one whose page is not loaded yet. */
+	static int lastCols;
+	static int lastRows;
+	/** The size this view had when Eclipse was closed. */
+	private int savedCols;
+	private int savedRows;
 	/** The page can show the output: until then it waits in {@link #pending}. */
-	private boolean pageReady;
+	private volatile boolean pageReady;
 	/** The shell was started while the page was loading, see {@link #startEarly()}. */
 	private boolean startedEarly;
+	private int shellsStarted;
+	/** The size of the shell started early. */
+	private int earlyCols;
+	private int earlyRows;
+	/** The page has told its size. */
+	private boolean laidOut;
 	private boolean keyFilterDisabled;
 
 	private final ByteArrayOutputStream pending = new ByteArrayOutputStream();
@@ -291,6 +303,12 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 				}
 			}
 			resumeProgram = true;
+			Integer columns = memento.getInteger(MEMENTO_COLUMNS);
+			Integer lines = memento.getInteger(MEMENTO_ROWS);
+			if (columns != null && lines != null && columns > 0 && lines > 0) {
+				savedCols = columns;
+				savedRows = lines;
+			}
 			String directory = memento.getString(MEMENTO_DIRECTORY);
 			if (directory != null && new File(directory).isDirectory()) {
 				workingDirectory = new File(directory);
@@ -309,6 +327,10 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	@Override
 	public void saveState(IMemento memento) {
 		memento.putString(MEMENTO_SHELL, commandLine);
+		if (laidOut) {
+			memento.putInteger(MEMENTO_COLUMNS, cols);
+			memento.putInteger(MEMENTO_ROWS, rows);
+		}
 		if (customName != null) {
 			memento.putString(MEMENTO_NAME, customName);
 		}
@@ -392,8 +414,13 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			if (javaCall == null) {
 				registerJavaCall();
 			}
+			if (!startedEarly) {
+				// A page loaded again starts a new shell, and cannot show anything before.
+				pageReady = false;
+			}
 			browser.execute(javaFunctionsScript + "xtermInit(" + config() + ")"); //$NON-NLS-1$ //$NON-NLS-2$
 		}));
+		boolean pageLoading = false;
 		try {
 			// One file per plug-in version, shared by all the terminals.
 			Path page = WebPage.materialize(
@@ -401,12 +428,12 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 					name -> XtermPlugin.resource("web/" + name)); //$NON-NLS-1$
 			pageFile = page.toFile().getAbsoluteFile();
 			browser.setUrl(page.toUri().toString());
+			pageLoading = true;
 		} catch (IOException e) {
 			XtermPlugin.log("Could not load the xterm.js resources", e); //$NON-NLS-1$
 			browser.setText("<pre>Could not load the xterm.js resources: " + escapeHtml(e.toString()) + "</pre>"); //$NON-NLS-1$ //$NON-NLS-2$
 		}
 
-		startEarly();
 		createActions();
 		// The tab shows the icon of the shell or program (bash, PowerShell, a coding agent...), with a
 		// badge for what it does.
@@ -430,6 +457,9 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		workbench().getThemeManager().addPropertyChangeListener(themeListener);
 		JFaceResources.getFontRegistry().addListener(themeListener);
 		XtermPlugin.preferences().addPropertyChangeListener(themeListener);
+		if (pageLoading) {
+			startEarly();
+		}
 	}
 
 	private void registerFunctions() {
@@ -441,15 +471,15 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		function("javaStart", args -> { //$NON-NLS-1$
 			updateSize(args);
 			pageReady = true;
-			if (startedEarly) {
-				// The shell is already running, at a guessed size: give it the real one and show
-				// what it has printed so far. Not from within the call: it runs a script in the page.
-				startedEarly = false;
-				if (session != null) {
-					session.resize(cols, rows);
-				}
+			boolean early = startedEarly;
+			startedEarly = false;
+			if (early && cols == earlyCols && rows == earlyRows) {
+				// The shell is already running, at the size of the page: show what it has printed so
+				// far. Not from within the call: it runs a script in the page.
 				display.asyncExec(this::flush);
 			} else {
+				// Also for a shell started early at another size than the one of the page: what it
+				// has printed is laid out for that size, a new one replaces it.
 				startSession();
 			}
 			// Else it waits for the shell, which a question of the user delays.
@@ -1701,9 +1731,9 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		}
 	}
 
-	/** @return whether the shell or program of the terminal has been started */
-	boolean shellStarted() {
-		return session != null;
+	/** @return how many times the shell or program of the terminal has been started */
+	int shellsStarted() {
+		return shellsStarted;
 	}
 
 	private void updateSize(Object[] args) {
@@ -1714,21 +1744,37 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			rows = newRows;
 			lastCols = newCols;
 			lastRows = newRows;
+			laidOut = true;
 		}
 	}
 
 	/**
 	 * Starts the shell without waiting for the page: a browser takes its time to load it, and so does a
-	 * login shell to print its first prompt (seconds for Git Bash). Both now happen at the same time.
-	 * The output waits for the page, and the shell gets its real size once the page knows it.
+	 * login shell to print its first prompt (seconds for Git Bash). Both now happen at the same time,
+	 * and the output waits for the page.
+	 * <p>
+	 * The size of the terminal is only known by the page: the shell starts at the size this view had
+	 * before the restart of Eclipse, or else of the last terminal laid out. If the page turns out to
+	 * have another size, the shell is started again, as if it had waited.
 	 */
 	private void startEarly() {
-		if (openedByUser && companion() != null) {
-			// An extension may ask the user something before the program starts: in the page.
+		int guessedCols = savedCols > 0 ? savedCols : lastCols;
+		int guessedRows = savedRows > 0 ? savedRows : lastRows;
+		if (guessedCols <= 0 || guessedRows <= 0 || !ShellProfiles.startsAtAPrompt(commandLine)) {
 			return;
 		}
-		cols = lastCols;
-		rows = lastRows;
+		if (restoredContent != null) {
+			// The restored screen is put above the new shell by the number of rows of the page.
+			return;
+		}
+		if (companion() != null) {
+			// The program of an extension: it may ask the user something first, or draw at once.
+			return;
+		}
+		cols = guessedCols;
+		rows = guessedRows;
+		earlyCols = guessedCols;
+		earlyRows = guessedRows;
 		startedEarly = true;
 		startSession();
 	}
@@ -1888,6 +1934,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			}
 		}
 		resumeProgram = false;
+		shellsStarted++;
 		try {
 			session = new PtySession(arguments, workingDirectory, cols, rows, this, variables);
 		} catch (IOException | RuntimeException | LinkageError e) {
@@ -2152,6 +2199,10 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		}
 		synchronized (pending) {
 			pending.write(data, 0, data.length);
+			if (!pageReady) {
+				// Shown once the page is there, see javaStart.
+				return;
+			}
 			if (flushScheduled) {
 				return;
 			}
