@@ -217,6 +217,13 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	private volatile boolean closeConfirmed;
 	private int cols = 80;
 	private int rows = 24;
+	/** The size of the last terminal that was laid out: the best guess for one whose page is not loaded yet. */
+	private static int lastCols = 80;
+	private static int lastRows = 24;
+	/** The page can show the output: until then it waits in {@link #pending}. */
+	private boolean pageReady;
+	/** The shell was started while the page was loading, see {@link #startEarly()}. */
+	private boolean startedEarly;
 	private boolean keyFilterDisabled;
 
 	private final ByteArrayOutputStream pending = new ByteArrayOutputStream();
@@ -399,6 +406,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			browser.setText("<pre>Could not load the xterm.js resources: " + escapeHtml(e.toString()) + "</pre>"); //$NON-NLS-1$ //$NON-NLS-2$
 		}
 
+		startEarly();
 		createActions();
 		// The tab shows the icon of the shell or program (bash, PowerShell, a coding agent...), with a
 		// badge for what it does.
@@ -432,7 +440,18 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		});
 		function("javaStart", args -> { //$NON-NLS-1$
 			updateSize(args);
-			startSession();
+			pageReady = true;
+			if (startedEarly) {
+				// The shell is already running, at a guessed size: give it the real one and show
+				// what it has printed so far. Not from within the call: it runs a script in the page.
+				startedEarly = false;
+				if (session != null) {
+					session.resize(cols, rows);
+				}
+				display.asyncExec(this::flush);
+			} else {
+				startSession();
+			}
 			// Else it waits for the shell, which a question of the user delays.
 			if (pendingInput != null && session != null) {
 				String text = pendingInput;
@@ -1682,13 +1701,36 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		}
 	}
 
+	/** @return whether the shell or program of the terminal has been started */
+	boolean shellStarted() {
+		return session != null;
+	}
+
 	private void updateSize(Object[] args) {
 		int newCols = ((Number) args[0]).intValue();
 		int newRows = ((Number) args[1]).intValue();
 		if (newCols > 0 && newRows > 0) {
 			cols = newCols;
 			rows = newRows;
+			lastCols = newCols;
+			lastRows = newRows;
 		}
+	}
+
+	/**
+	 * Starts the shell without waiting for the page: a browser takes its time to load it, and so does a
+	 * login shell to print its first prompt (seconds for Git Bash). Both now happen at the same time.
+	 * The output waits for the page, and the shell gets its real size once the page knows it.
+	 */
+	private void startEarly() {
+		if (openedByUser && companion() != null) {
+			// An extension may ask the user something before the program starts: in the page.
+			return;
+		}
+		cols = lastCols;
+		rows = lastRows;
+		startedEarly = true;
+		startSession();
 	}
 
 	/** Cursor movements (CUU, CUD, CUF, CUB) at the end of a screen, before its last colors. */
@@ -2125,6 +2167,10 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		byte[] data;
 		synchronized (pending) {
 			flushScheduled = false;
+			if (!pageReady) {
+				// Kept for the page, see javaStart.
+				return;
+			}
 			data = pending.toByteArray();
 			pending.reset();
 			pending.notifyAll();

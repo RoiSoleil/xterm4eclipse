@@ -200,6 +200,37 @@ class XtermViewTest {
 		run(view, "echo after-$((2+3))", "after-5");
 	}
 
+	/**
+	 * The browser takes its time to load the page, and a login shell such as Git Bash to print its first
+	 * prompt: the shell starts while the page loads, its output waits for the page and it gets the
+	 * size of the page afterwards.
+	 */
+	@Test
+	void shellStartsWhileThePageLoads() throws Exception {
+		boolean[] started = new boolean[1];
+		XtermView view = open(new XtermView() {
+			@Override
+			public void createPartControl(Composite parent) {
+				super.createPartControl(parent);
+				started[0] = shellStarted();
+			}
+		});
+
+		assertTrue(started[0], "shell started when the view is created");
+		// The prompt was printed before the page could show it, and was not lost (open waits for it).
+		Object rows = view.browser.evaluate("return document.querySelector('.xterm-rows').children.length");
+		String expected = "rows=" + ((Number) rows).intValue();
+		for (int attempt = 0; attempt < 3 && !screen(view).contains("\n" + expected); attempt++) {
+			type(view, "\u0015echo rows=$(stty size | cut -d' ' -f1)\r");
+			try {
+				await("output", () -> screen(view).contains("\n" + expected), 5000);
+			} catch (AssertionError e) {
+				// Typed again, see shellFollowsTheSizeOfTheView.
+			}
+		}
+		assertTrue(screen(view).contains("\n" + expected), screen(view));
+	}
+
 	/** The BrowserFunctions of the browser, kept by SWT. */
 	private static Map<?, ?> browserFunctions(Browser browser) {
 		try {
