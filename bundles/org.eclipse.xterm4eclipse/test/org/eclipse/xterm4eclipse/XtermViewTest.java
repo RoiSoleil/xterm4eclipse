@@ -1823,6 +1823,12 @@ class XtermViewTest {
 		assertNull(XtermView.resolveFile(new File(directory, "nodir/.netrc").getPath(), null));
 		assertNull(XtermView.resolveFile(new File(directory, "bin").getPath(), null), "a directory is not a file");
 		assertNull(XtermView.resolveFile("/help", null), "a word of the output, in the root");
+		// a word of the output that is no path on this system: a NUL character anywhere, * on Windows (a regular
+		// expression printed by grep; elsewhere, only a file that does not exist)
+		assertNull(XtermView.resolveFile("a\0b", directory));
+		assertNull(XtermView.resolveFile(new File(directory, "a\0b").getPath(), null));
+		assertNull(XtermView.resolveFile("^\\s*#", directory));
+		assertNull(XtermView.resolveFolder("a\0b", directory));
 		Path dangling = Files.createSymbolicLink(new File(directory, "bin/dangling").toPath(), new File(directory, "bin/target").toPath());
 		assertNull(XtermView.resolveFile(dangling.toString(), null), "a link to nothing");
 		String home = System.getProperty("user.home");

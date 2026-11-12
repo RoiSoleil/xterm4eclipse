@@ -7,6 +7,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -700,10 +701,12 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 				file = inRepository != null ? inRepository : file;
 			}
 		}
-		boolean link = Files.isSymbolicLink(file.toPath());
+		boolean link;
 		try {
+			link = Files.isSymbolicLink(file.toPath());
 			file = file.getCanonicalFile();
-		} catch (IOException e) {
+		} catch (InvalidPathException | IOException e) {
+			// a word of the output that is no path here: ^\s*# on Windows, where * is not allowed in a name
 			return null;
 		}
 		if (file.isFile()) {
