@@ -126,7 +126,7 @@
 		term.registerLinkProvider({
 			provideLinks: function (y, callback) {
 				var line = term.buffer.active.getLine(y - 1);
-				var candidates = line ? fileLinkCandidates(line.translateToString(true)) : [];
+				var candidates = line && !bangCommandAt(y) ? fileLinkCandidates(line.translateToString(true)) : [];
 				if (!candidates.length) {
 					callback(undefined);
 					return;
@@ -156,6 +156,75 @@
 					});
 				});
 				callback(links.length ? links : undefined);
+			}
+		});
+
+		var bangLine = /^(\s*)!\s+([A-Za-z0-9_.\/~$"'].*?)\s*$/;
+		function bangCommandAt(y) {
+			var buffer = term.buffer.active;
+			var first = y - 1;
+			while (first > 0 && buffer.getLine(first) && buffer.getLine(first).isWrapped) {
+				first--;
+			}
+			var firstLine = buffer.getLine(first);
+			if (!firstLine || firstLine.isWrapped || !/^\s*!\s/.test(firstLine.translateToString(true))) {
+				return null;
+			}
+			var last = first;
+			while (buffer.getLine(last + 1) && buffer.getLine(last + 1).isWrapped) {
+				last++;
+			}
+			var next = buffer.getLine(last + 1);
+			var nextText = next ? next.translateToString(true) : '';
+			if (nextText.trim() !== '' && !/^\s*!\s/.test(nextText)) {
+				return null;
+			}
+			var text = '';
+			for (var i = first; i <= last; i++) {
+				text += buffer.getLine(i).translateToString(i === last);
+			}
+			var match = bangLine.exec(text);
+			if (!match) {
+				return null;
+			}
+			var cols = term.cols;
+			var start = match[1].length;
+			var end = text.replace(/\s+$/, '').length - 1;
+			return {
+				command: match[2],
+				text: text.substring(start, end + 1),
+				range: {
+					start: { x: start % cols + 1, y: first + 1 + Math.floor(start / cols) },
+					end: { x: end % cols + 1, y: first + 1 + Math.floor(end / cols) }
+				}
+			};
+		}
+		function runBangCommand(command) {
+			javaInput('!');
+			setTimeout(function () {
+				safePaste(' ' + command);
+				setTimeout(function () {
+					javaInput('\r');
+				}, 100);
+			}, 50);
+		}
+		term.registerLinkProvider({
+			provideLinks: function (y, callback) {
+				var bang = bangCommandAt(y);
+				if (!bang) {
+					callback(undefined);
+					return;
+				}
+				callback([{
+					range: bang.range,
+					text: bang.text,
+					decorations: { pointerCursor: true, underline: true },
+					activate: function (e) {
+						if (e.ctrlKey || e.metaKey) {
+							runBangCommand(bang.command);
+						}
+					}
+				}]);
 			}
 		});
 

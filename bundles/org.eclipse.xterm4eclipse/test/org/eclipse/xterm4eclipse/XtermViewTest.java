@@ -1633,6 +1633,39 @@ class XtermViewTest {
 	}
 
 	@Test
+	void ctrlClickOnABangCommandRunsIt() throws Exception {
+		XtermView view = open();
+		run(view, "printf '\\n  ! expr 1234 + 4321\\n\\n! [rejected] main\\n\\n! expr 7 + 1\\ncut here\\n\\n'", "cut here");
+
+		awaitLink(view, "! expr 1234");
+		assertFalse(hasLink(view, "! [rejected]"), "not a command");
+		assertFalse(hasLink(view, "! expr 7"), "a command that goes on in the next line");
+		click(view, "! expr 1234", false);
+		pump(500);
+		assertFalse(screen(view).contains("5555"), "a click without Ctrl runs nothing");
+		click(view, "! expr 1234", true);
+		await("command run", () -> screen(view).contains("5555"));
+	}
+
+	@Test
+	void ctrlClickOnAWrappedBangCommandRunsAllOfIt() throws Exception {
+		XtermView view = open();
+		String padding = "x".repeat(300);
+		run(view, "printf '\\n! echo %s; expr 5000 + 1234\\n\\n' " + padding, "+ 1234");
+
+		awaitLink(view, "! echo xxx");
+		click(view, "! echo xxx", true);
+		await("whole command run", () -> screen(view).contains("6234"));
+	}
+
+	private static boolean hasLink(XtermView view, String text) {
+		view.browser.execute(position(text)
+				+ "screen.dispatchEvent(new MouseEvent('mousemove', {clientX: x, clientY: y, bubbles: true}));");
+		pump(500);
+		return Boolean.TRUE.equals(view.browser.evaluate("return document.querySelector('.xterm-cursor-pointer') !== null"));
+	}
+
+	@Test
 	void ctrlClickOnAFileToCreateOpensItEmpty() throws Exception {
 		// A path of the home directory: the temporary directory of macOS and Windows is too long for a
 		// line of the terminal, and a link does not span two lines.

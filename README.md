@@ -61,6 +61,10 @@ without the second one: leave it unchecked if you do not want it.
   a folder opens it in the file manager of the system (Explorer, Finder, the file manager of the
   desktop; a package of macOS such as an `.app` is shown in its folder, never run). Ctrl+click on a URL
   opens it in the browser.
+- Ctrl+click (Cmd+click on macOS) on a `! command` line, as Claude Code shows the commands it asks you to
+  run yourself, types `!` (the bash mode of Claude Code), pastes the command and presses Enter. Only a
+  line followed by an empty line or another `! ` line is a link, so that a command wrapped by the program
+  is never run in part.
 - *Rename…* in the view menu gives the terminal a fixed name, kept after a restart (the titles set by
   programs then only go to the tool tip; an empty name brings them back).
 - *Move to the Editor Area* / *Move Back to the Views* (tool bar): the terminal view moves to the
