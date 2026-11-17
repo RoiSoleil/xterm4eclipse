@@ -21,7 +21,11 @@ import java.util.stream.Stream;
 final class Conversations {
 
 	/** A kept conversation. */
-	record Conversation(String id, String title, long modified) {
+	record Conversation(String id, String title, long modified, File directory) {
+
+		Conversation(String id, String title, long modified) {
+			this(id, title, modified, null);
+		}
 	}
 
 	/** The home of the user; a test may change it. */

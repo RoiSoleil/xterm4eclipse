@@ -53,7 +53,14 @@ public class ResumeInTerminalHandler extends AbstractHandler {
 	/** Asks which conversation of the folder to resume, and resumes it in a new terminal. */
 	static void resume(Shell shell, IWorkbenchPage page, File directory) {
 		Conversations.Conversation chosen = ResumeHandler.pick(shell, directory);
-		if (chosen == null) {
+		if (chosen != null) {
+			open(shell, page, chosen, directory);
+		}
+	}
+
+	static void open(Shell shell, IWorkbenchPage page, Conversations.Conversation chosen, File fallback) {
+		File directory = ResumeHandler.target(shell, chosen, fallback);
+		if (directory == null) {
 			return;
 		}
 		// Only the ids of Claude Code, which are UUIDs: a command line takes nothing else for the argument of --resume.
