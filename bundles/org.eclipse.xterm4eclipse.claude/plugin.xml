@@ -41,6 +41,11 @@
             name="Resume a Claude Code Conversation in a Terminal..."
             description="Resumes in a new terminal a conversation that Claude Code has kept for the project of the selection"/>
       <command
+            id="org.eclipse.xterm4eclipse.claude.find"
+            categoryId="org.eclipse.xterm4eclipse.claude.commands"
+            name="Find a Claude Code Conversation..."
+            description="Finds the conversations of Claude Code that mention a text, a pull request, a ticket, a commit or a file, and resumes one"/>
+      <command
             id="org.eclipse.xterm4eclipse.claude.ask"
             categoryId="org.eclipse.xterm4eclipse.claude.commands"
             name="Ask Claude Code"
@@ -59,6 +64,9 @@
       <handler
             commandId="org.eclipse.xterm4eclipse.claude.ask"
             class="org.eclipse.xterm4eclipse.claude.AskClaudeHandler"/>
+      <handler
+            commandId="org.eclipse.xterm4eclipse.claude.find"
+            class="org.eclipse.xterm4eclipse.claude.FindConversationHandler"/>
    </extension>
    <extension point="org.eclipse.ui.commandImages">
       <image
@@ -77,6 +85,11 @@
             contextId="org.eclipse.ui.contexts.window"
             schemeId="org.eclipse.ui.defaultAcceleratorConfiguration"
             sequence="M1+M2+M3+C"/>
+      <key
+            commandId="org.eclipse.xterm4eclipse.claude.find"
+            contextId="org.eclipse.ui.contexts.window"
+            schemeId="org.eclipse.ui.defaultAcceleratorConfiguration"
+            sequence="M1+M2+M3+F"/>
       <key
             commandId="org.eclipse.xterm4eclipse.claude.ask"
             contextId="org.eclipse.ui.textEditorScope"
@@ -98,6 +111,9 @@
                   commandId="org.eclipse.xterm4eclipse.claude.resumeInTerminal"
                   label="Resume a Conversation in a &amp;Terminal..."/>
             <command
+                  commandId="org.eclipse.xterm4eclipse.claude.find"
+                  label="&amp;Find a Conversation..."/>
+            <command
                   commandId="org.eclipse.xterm4eclipse.claude.ask"
                   label="&amp;Ask Claude Code">
                <visibleWhen checkEnabled="true"/>
@@ -105,6 +121,9 @@
          </menu>
       </menuContribution>
       <menuContribution locationURI="popup:#AbstractTextEditorContext?after=additions">
+         <command
+               commandId="org.eclipse.xterm4eclipse.claude.find"
+               label="Find Claude Conversations about This Text"/>
          <command
                commandId="org.eclipse.xterm4eclipse.claude.ask">
             <visibleWhen checkEnabled="false">
@@ -118,6 +137,18 @@
          </command>
       </menuContribution>
       <menuContribution locationURI="popup:org.eclipse.ui.popup.any?after=additions">
+         <command
+               commandId="org.eclipse.xterm4eclipse.claude.find"
+               label="Find Claude Conversations about This File">
+            <visibleWhen checkEnabled="false">
+               <with variable="selection">
+                  <count value="1"/>
+                  <iterate ifEmpty="false">
+                     <adapt type="org.eclipse.core.resources.IResource"/>
+                  </iterate>
+               </with>
+            </visibleWhen>
+         </command>
          <command
                commandId="org.eclipse.xterm4eclipse.claude.ask">
             <visibleWhen checkEnabled="false">

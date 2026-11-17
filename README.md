@@ -165,6 +165,18 @@ Claude Desktop: it runs the `claude` program of the computer, which must be inst
   (`claude --resume`). A conversation of the chat can be resumed in a terminal the same way, and the
   tool bar of the terminal view, like the menu *Claude*, has *Resume a Conversation in a Terminal...*:
   the same list, and `claude --resume` runs in a new terminal in the project.
+- *Find a Conversation...* (menu *Claude*, Ctrl+Alt+Shift+F, context menu of a file or of a selected
+  text) searches the messages of all the conversations, also from the resume dialogs with *Search in
+  the messages*. It tells what it understood of the text: a pull or merge request (GitHub, GitLab,
+  Gerrit, Bitbucket: every form of its URL, `owner/repo#1234`), a number, a ticket (`PROJ-123`,
+  `#123`), a commit, a Gerrit Change-Id, a URL, a path (`@src/Foo.java#L10-20`), a type, or words
+  (all of them, `OR`, `"a phrase"`, `-excluded`), ignoring case and accents; *Exact text* and
+  *Regular expression* force a mode, *Approximate* tolerates a typo. Filters: this folder or all
+  projects, period, branch, who wrote it (me, Claude, tools), *Modified files only*, *Subagents*. What
+  the user wrote ranks first, then a modified file, a tool call, an answer of Claude, a tool output;
+  a conversation resumed several times is listed once. *Resume in a Chat* or *in a Terminal* goes back
+  to the folder of the conversation (another one is asked for if it no longer exists); *Copy Session
+  Id* and *Open File* (the `.jsonl`) too.
 - When the MCP server of Eclipse runs (https://github.com/vogellacompany/eclipse-mcp-server), a chat
   gives it to Claude Code at once, for this conversation only (`--mcp-config` with a file of the user
   that is deleted when Claude Code ends): its projects, problems, launches... No question is asked and

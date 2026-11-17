@@ -52,10 +52,41 @@ public class ResumeHandler extends AbstractHandler {
 		return chooser.choose(shell, directory, conversations);
 	}
 
-	/** Asks which conversation of the folder to resume, and opens it in a chat. */
+	interface MissingDirectory {
+		File choose(Shell shell, String missing);
+	}
+
+	static MissingDirectory missingDirectory = ResumeHandler::askDirectory;
+
+	static File target(Shell shell, Conversations.Conversation chosen, File fallback) {
+		File directory = chosen.directory();
+		if (directory == null) {
+			return fallback;
+		}
+		return directory.isDirectory() ? directory : missingDirectory.choose(shell, directory.getPath());
+	}
+
+	private static File askDirectory(Shell shell, String missing) {
+		if (!MessageDialog.openQuestion(shell, "Resume a Conversation",
+				"The folder of the conversation no longer exists: " + missing + "\nResume it in another folder?")) {
+			return null;
+		}
+		org.eclipse.swt.widgets.DirectoryDialog dialog = new org.eclipse.swt.widgets.DirectoryDialog(shell);
+		dialog.setMessage("The folder where Claude Code resumes the conversation");
+		String path = dialog.open();
+		return path == null ? null : new File(path);
+	}
+
 	static void resume(Shell shell, IWorkbenchPage page, File directory) {
 		Conversations.Conversation chosen = pick(shell, directory);
-		if (chosen == null) {
+		if (chosen != null) {
+			openChat(shell, page, chosen, directory);
+		}
+	}
+
+	static void openChat(Shell shell, IWorkbenchPage page, Conversations.Conversation chosen, File fallback) {
+		File directory = target(shell, chosen, fallback);
+		if (directory == null) {
 			return;
 		}
 		try {
