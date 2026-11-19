@@ -44,6 +44,7 @@ import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.jface.action.ActionContributionItem;
 import org.eclipse.jface.action.IAction;
+import org.eclipse.e4.ui.model.application.ui.basic.MBasicFactory;
 import org.eclipse.e4.ui.model.application.ui.basic.MPart;
 import org.eclipse.e4.ui.workbench.IPresentationEngine;
 import org.eclipse.jface.action.IMenuCreator;
@@ -517,6 +518,21 @@ class XtermViewTest {
 		assertFalse(XtermView.keepsViewOpen(1, 5000, "/bin/bash"), "a shell left by the user");
 		assertFalse(XtermView.keepsViewOpen(0, 5000, "/bin/zsh -l -i -c claude"), "a program that ended well");
 		assertTrue(XtermView.keepsViewOpen(1, 5000, "/bin/zsh -l -i -c claude"), "a program that failed");
+	}
+
+	@Test
+	void closingAViewWhileACommandRunsLeavesNoDirtyPartToSaveAtExit() throws Exception {
+		MPart part = MBasicFactory.INSTANCE.createPart();
+		workbench.nextPart = part;
+		XtermView view = open();
+		type(view, "sleep 30\r");
+		await("running", view::isDirty);
+		part.setDirty(true);
+
+		view.dispose();
+		workbench.views.clear();
+
+		assertFalse(part.isDirty());
 	}
 
 	@Test
