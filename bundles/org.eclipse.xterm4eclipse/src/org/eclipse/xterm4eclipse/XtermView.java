@@ -1422,6 +1422,12 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 				part.getTransientData().put(IPresentationEngine.OVERRIDE_ICON_IMAGE_KEY, image);
 			}
 		}
+
+		static void clearDirty(org.eclipse.ui.IWorkbenchPartSite site) {
+			if (site.getService((Class<?>) MPart.class) instanceof MPart part) {
+				part.setDirty(false);
+			}
+		}
 	}
 
 	/**
@@ -2335,6 +2341,10 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		if (session != null) {
 			session.dispose();
 			session = null;
+		}
+		try {
+			TabIcons.clearDirty(getSite());
+		} catch (LinkageError | RuntimeException e) {
 		}
 		if (companion != null) {
 			try {
