@@ -2,7 +2,6 @@ package org.eclipse.xterm4eclipse.harness;
 
 import java.io.File;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import org.eclipse.swt.widgets.Display;
@@ -116,18 +115,6 @@ final class HarnessCompanion implements TerminalCompanion {
 		// A subcommand comes after options only, not after a prompt.
 		boolean subcommand = harness.interactive() != null || !arguments.get(0).startsWith("-"); //$NON-NLS-1$
 		return subcommand && run != Run.CONVERSATION ? null : arguments;
-	}
-
-	@Override
-	public Map<String, String> environment() {
-		if (harness.mcp() != null && harness.mcp().tokenInEnvironment()) {
-			// The agent reads the token of the server here, not in its files.
-			EclipseMcp.Endpoint endpoint = EclipseMcp.running();
-			if (endpoint != null) {
-				return Map.of(EclipseMcp.TOKEN_VARIABLE, endpoint.token());
-			}
-		}
-		return Map.of();
 	}
 
 	@Override

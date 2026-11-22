@@ -48,7 +48,7 @@ class CursorCliTest extends HarnessTestCase {
 		assertNull(Harnesses.CURSOR.mcp(), "its servers are only in its files");
 		eclipseMcpRuns();
 		XtermView view = open(program("cursor-agent"));
-		assertEquals(new Start("", ""), started(view, 1));
+		assertEquals(new Start("", TOKEN), started(view, 1));
 		assertTrue(asked.isEmpty());
 		assertEquals(List.of(""), calls());
 	}

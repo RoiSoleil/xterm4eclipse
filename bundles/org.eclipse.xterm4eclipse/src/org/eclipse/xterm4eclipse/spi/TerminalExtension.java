@@ -1,6 +1,7 @@
 package org.eclipse.xterm4eclipse.spi;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * What another plug-in adds to the terminals, through the extension point
@@ -33,5 +34,12 @@ public interface TerminalExtension {
 	 */
 	default TerminalCompanion accompany(Terminal terminal) {
 		return null;
+	}
+
+	/**
+	 * @return variables added to the environment of every terminal, whatever program it runs
+	 */
+	default Map<String, String> environment() {
+		return Map.of();
 	}
 }

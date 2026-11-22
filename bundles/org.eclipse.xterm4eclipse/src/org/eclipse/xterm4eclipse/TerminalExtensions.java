@@ -1,7 +1,9 @@
 package org.eclipse.xterm4eclipse;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.ServiceLoader;
 
 import org.eclipse.core.runtime.CoreException;
@@ -134,6 +136,19 @@ final class TerminalExtensions {
 			}
 		}
 		return null;
+	}
+
+	/** @return the variables that the extensions add to the environment of every terminal */
+	static Map<String, String> environment() {
+		Map<String, String> variables = new LinkedHashMap<>();
+		for (TerminalExtension extension : all()) {
+			try {
+				variables.putAll(extension.environment());
+			} catch (RuntimeException | LinkageError e) {
+				failed(extension, e);
+			}
+		}
+		return variables;
 	}
 
 	static void failed(Object extension, Throwable exception) {

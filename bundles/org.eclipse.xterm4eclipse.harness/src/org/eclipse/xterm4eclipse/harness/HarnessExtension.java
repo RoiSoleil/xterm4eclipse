@@ -3,6 +3,7 @@ package org.eclipse.xterm4eclipse.harness;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import org.eclipse.xterm4eclipse.spi.CommandLine;
 import org.eclipse.xterm4eclipse.spi.Terminal;
@@ -74,5 +75,14 @@ public final class HarnessExtension implements TerminalExtension {
 	public TerminalCompanion accompany(Terminal terminal) {
 		Harnesses.Found found = Harnesses.find(terminal.commandLine());
 		return found == null ? null : new HarnessCompanion(terminal, found.harness());
+	}
+
+	/**
+	 * The MCP server of Eclipse gives its port and its token to every terminal, so that the
+	 * configuration of an agent can refer to them whatever its program.
+	 */
+	@Override
+	public Map<String, String> environment() {
+		return EclipseMcp.environment();
 	}
 }

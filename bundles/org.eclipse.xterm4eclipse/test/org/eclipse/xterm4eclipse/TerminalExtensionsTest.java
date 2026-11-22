@@ -239,6 +239,33 @@ class TerminalExtensionsTest {
 	}
 
 	@Test
+	void variablesOfAnExtensionGoToEveryTerminal() throws Exception {
+		List<Terminal> seen = new ArrayList<>();
+		TerminalExtension variables = new TerminalExtension() {
+			@Override
+			public Map<String, String> environment() {
+				return Map.of("ECLIPSE_MCP_PORT", "8642", "ECLIPSE_MCP_TOKEN", "a-token");
+			}
+
+			@Override
+			public TerminalCompanion accompany(Terminal terminal) {
+				seen.add(terminal);
+				return null;
+			}
+		};
+		TerminalExtensions.set(List.of(variables));
+		Path script = Files.writeString(Files.createTempDirectory(FOLDER.toPath(), "variables").resolve("variables.sh"),
+				"echo \"mcp: $ECLIPSE_MCP_PORT $ECLIPSE_MCP_TOKEN\"\nwhile read line; do\n  echo \"got $line\"\ndone\n");
+		XtermView view = workbench.openByUser('"' + TestWorkbench.BASH + "\" \"" + script + '"', FOLDER);
+		await("variables of the extension", () -> screen(view).contains("mcp: 8642 a-token"));
+		assertEquals(1, seen.size());
+		assertTrue(List.of(seen.get(0).environment()).contains("ECLIPSE_MCP_PORT=8642"));
+		assertTrue(List.of(seen.get(0).environment()).contains("ECLIPSE_MCP_TOKEN=a-token"));
+		type(view, "hello\r");
+		await("line", () -> screen(view).contains("got hello"));
+	}
+
+	@Test
 	void extensionThatFailsIsLeftOut() throws Exception {
 		TerminalExtension broken = new TerminalExtension() {
 			@Override
@@ -319,6 +346,7 @@ class TerminalExtensionsTest {
 		TerminalExtensions.set(List.of());
 		assertNull(TerminalExtensions.icon("agent"));
 		assertTrue(TerminalExtensions.profiles(ShellProfiles.Host.current()).isEmpty());
+		assertTrue(TerminalExtensions.environment().isEmpty());
 		assertEquals("icons/shells/shell.png", ShellProfiles.icon("agent").path());
 	}
 }

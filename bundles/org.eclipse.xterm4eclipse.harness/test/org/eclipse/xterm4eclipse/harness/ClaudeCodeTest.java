@@ -135,7 +135,6 @@ class ClaudeCodeTest extends HarnessTestCase {
 		assertArrayEquals(line("bash", "-c", "'/my dir/claude' mcp list"),
 				Harnesses.find(line("bash", "-c", "'/my dir/claude' --model opus")).invocation().replaced(List.of("mcp", "list")));
 		assertFalse(mcp.tokenInEnvironment());
-		assertTrue(new Run("claude").companion.environment().isEmpty());
 	}
 
 	@Test
@@ -200,7 +199,6 @@ class ClaudeCodeTest extends HarnessTestCase {
 		assertTrue(text.contains("[Claude Code can now use Eclipse.]"), text);
 		String add = "mcp add --transport http --scope user " + NAME + " " + url + " --header Authorization: Bearer " + TOKEN;
 		assertEquals(List.of(add, "mcp remove --scope user " + NAME, add), mcpCalls());
-		assertEquals("", started(view, 1).token(), "Claude Code keeps the token in its files");
 
 		// Known by Claude Code: not asked again.
 		write(home.resolve(".claude.json"), "{\"mcpServers\": {\"eclipse\": {\"url\": \"" + url + "\"}}}");

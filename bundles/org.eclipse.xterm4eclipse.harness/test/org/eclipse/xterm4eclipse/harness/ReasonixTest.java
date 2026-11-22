@@ -65,6 +65,6 @@ class ReasonixTest extends HarnessTestCase {
 				"mcp add " + NAME + " --http {url} --header Authorization=Bearer " + TOKEN,
 				"MCP server \"" + NAME + "\" is already configured; remove it first or choose another name",
 				"mcp remove " + NAME, home.resolve(".reasonix/config.toml"));
-		assertEquals("", start.token());
+		assertEquals(TOKEN, start.token(), "every terminal gives the token of the server");
 	}
 }

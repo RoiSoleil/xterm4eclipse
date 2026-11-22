@@ -313,7 +313,7 @@ abstract class HarnessTestCase {
 					+ ">> \"" + log + "\" echo %*\r\n"
 					+ "if \"%1\"==\"mcp\" goto mcp\r\n"
 					+ "if \"%1\"==\"session\" if \"%2\"==\"list\" goto list\r\n"
-					+ "echo args: [%*] token: [%XTERM4ECLIPSE_MCP_TOKEN%]\r\n"
+					+ "echo args: [%*] token: [%ECLIPSE_MCP_TOKEN%]\r\n"
 					+ ":read\r\nset line=\r\nset /p line=\r\n"
 					+ "if \"%line%\"==\"quit\" exit /b 3\r\necho got %line%\r\ngoto read\r\n"
 					+ ":list\r\nif exist \"" + list + "\" type \"" + list + "\"\r\nexit /b 0\r\n"
@@ -327,7 +327,7 @@ abstract class HarnessTestCase {
 				+ "  if [ \"$2\" = add ] && [ -e '" + refusal + "' ]; then cat '" + refusal + "'; rm '" + refusal + "'; exit 1; fi\n"
 				+ "  exit 0\nfi\n"
 				+ "if [ \"$1\" = session ] && [ \"$2\" = list ]; then cat '" + list + "' 2> /dev/null; exit 0; fi\n"
-				+ "echo \"args: [$*] token: [$XTERM4ECLIPSE_MCP_TOKEN]\"\n"
+				+ "echo \"args: [$*] token: [$ECLIPSE_MCP_TOKEN]\"\n"
 				+ "while read line; do\n  [ \"$line\" = quit ] && exit 3\n  echo \"got $line\"\ndone\n");
 		assertTrue(program.toFile().setExecutable(true));
 		return program.toString();
@@ -397,7 +397,8 @@ abstract class HarnessTestCase {
 	 * @param arguments
 	 *            its arguments
 	 * @param token
-	 *            the token of the MCP server of Eclipse in its environment, or nothing
+	 *            the token of the MCP server of Eclipse in the environment of the terminal, or
+	 *            nothing if no server runs
 	 */
 	record Start(String arguments, String token) {
 	}
