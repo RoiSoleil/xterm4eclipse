@@ -41,7 +41,7 @@ class CrushTest extends HarnessTestCase {
 	void isNotOfferedTheMcpServerOfEclipse() throws Exception {
 		assertNull(Harnesses.CRUSH.mcp(), "its servers are only in its files");
 		eclipseMcpRuns();
-		assertEquals(new Start("", ""), started(open(program("crush")), 1));
+		assertEquals(new Start("", TOKEN), started(open(program("crush")), 1));
 		assertTrue(asked.isEmpty());
 	}
 }

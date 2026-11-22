@@ -1914,7 +1914,8 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 
 		@Override
 		public String[] environment() {
-			return PtySession.environment(ShellProfiles.parse(commandLine));
+			return PtySession.with(PtySession.environment(ShellProfiles.parse(commandLine)),
+					TerminalExtensions.environment());
 		}
 
 		@Override
@@ -1925,7 +1926,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 
 	private void startProcess() {
 		String[] arguments = ShellProfiles.parse(commandLine);
-		Map<String, String> variables = Map.of();
+		Map<String, String> variables = TerminalExtensions.environment();
 		TerminalCompanion current = companion();
 		if (current != null) {
 			try {
@@ -1936,7 +1937,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 					arguments = changed;
 				}
 				if (added != null) {
-					variables = added;
+					variables.putAll(added);
 				}
 			} catch (RuntimeException | LinkageError e) {
 				TerminalExtensions.failed(current, e);

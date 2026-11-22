@@ -2,12 +2,16 @@ package org.eclipse.xterm4eclipse.harness;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 
+import org.eclipse.xterm4eclipse.TestWorkbench;
+import org.eclipse.xterm4eclipse.XtermView;
 import org.junit.jupiter.api.Test;
 
 /** The MCP server of Eclipse, as the agents are told about it. */
@@ -54,5 +58,23 @@ class EclipseMcpTest extends HarnessTestCase {
 	void withoutAWorkspaceThereIsNoServer() {
 		EclipseMcp.workspace = null;
 		assertNull(EclipseMcp.running(), "outside of Eclipse");
+	}
+
+	@Test
+	void everyTerminalKnowsThePortAndTheTokenOfTheServer() throws Exception {
+		assertTrue(EclipseMcp.environment().isEmpty(), "no server of Eclipse");
+		String url = eclipseMcpRuns();
+		String port = url.substring(url.lastIndexOf(':') + 1, url.lastIndexOf('/'));
+		assertEquals(Map.of("ECLIPSE_MCP_PORT", port, "ECLIPSE_MCP_TOKEN", TOKEN), EclipseMcp.environment());
+
+		// A terminal that runs a shell, not an agent, gets them too.
+		Path script = Files.writeString(Files.createTempDirectory(TestWorkbench.FOLDER.toPath(), "variables")
+				.resolve("variables.sh"), "echo \"mcp: $ECLIPSE_MCP_PORT $ECLIPSE_MCP_TOKEN\"\n"
+						+ "while read line; do\n  [ \"$line\" = quit ] && exit 3\n  echo \"got $line\"\ndone\n");
+		String commandLine = '"' + TestWorkbench.BASH + "\" \"" + script + '"';
+		XtermView view = open(commandLine);
+		TestWorkbench.await("variables of the server", () -> TestWorkbench.screen(view).contains("mcp: " + port + ' ' + TOKEN));
+		TestWorkbench.type(view, "hello\r");
+		TestWorkbench.await("line", () -> TestWorkbench.screen(view).contains("got hello"));
 	}
 }

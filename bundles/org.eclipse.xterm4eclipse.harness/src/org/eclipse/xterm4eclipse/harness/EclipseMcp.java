@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -27,10 +28,15 @@ public final class EclipseMcp {
 	/** The name of the server in the agents: it tells who added it. Claude Code allows no space in it. */
 	public static final String NAME = "eclipse-mcp-server-via-xterm4eclipse"; //$NON-NLS-1$
 	/**
-	 * The variable in which the terminals give the token of the server to the agents that do not
-	 * keep it in their files (Codex).
+	 * The variable in which every terminal gives the port of the server, so that a configuration
+	 * of an agent can reach it without naming the port.
 	 */
-	static final String TOKEN_VARIABLE = "XTERM4ECLIPSE_MCP_TOKEN"; //$NON-NLS-1$
+	static final String PORT_VARIABLE = "ECLIPSE_MCP_PORT"; //$NON-NLS-1$
+	/**
+	 * The variable in which every terminal gives the token of the server, so that a configuration
+	 * of an agent can reach it without keeping the token.
+	 */
+	static final String TOKEN_VARIABLE = "ECLIPSE_MCP_TOKEN"; //$NON-NLS-1$
 	/** Where the server tells how to reach it, in the folder of the workspace. */
 	static final String ENDPOINT_FILE = ".metadata/.plugins/com.vogella.eclipse.mcp.server/endpoint.json"; //$NON-NLS-1$
 	/** Only a server of this computer: the address and the token go into a command line. */
@@ -39,6 +45,12 @@ public final class EclipseMcp {
 
 	/** The running server: where it listens, and the token that it requires. */
 	public record Endpoint(String url, String token) {
+
+		/** @return the port on which the server listens */
+		String port() {
+			Matcher address = URL.matcher(url);
+			return address.matches() ? address.group(1) : ""; //$NON-NLS-1$
+		}
 	}
 
 	/** The folder of the workspace; a test may change it. */
@@ -96,6 +108,18 @@ public final class EclipseMcp {
 	private static String field(String json, String name) {
 		Matcher matcher = Pattern.compile("\"" + name + "\"\\s*:\\s*\"([^\"\\\\]*)\"").matcher(json); //$NON-NLS-1$ //$NON-NLS-2$
 		return matcher.find() ? matcher.group(1) : null;
+	}
+
+	/**
+	 * @return the variables that every terminal gives its programs while the server runs: its port
+	 *         and its token, which a configuration of an agent can refer to
+	 */
+	public static Map<String, String> environment() {
+		Endpoint endpoint = running();
+		if (endpoint == null) {
+			return Map.of();
+		}
+		return Map.of(PORT_VARIABLE, endpoint.port(), TOKEN_VARIABLE, endpoint.token());
 	}
 
 	/**

@@ -134,6 +134,6 @@ class OpenCodeTest extends HarnessTestCase {
 		Start start = assertOfferedTheMcpServerOfEclipse("opencode",
 				"mcp add " + NAME + " --url {url} --header Authorization=Bearer " + TOKEN + " --global", null, null,
 				home.resolve(".config/opencode/opencode.json"));
-		assertEquals("", start.token(), "OpenCode keeps the token in its files");
+		assertEquals(TOKEN, start.token(), "every terminal gives the token of the server");
 	}
 }

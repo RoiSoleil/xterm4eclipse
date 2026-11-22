@@ -44,7 +44,7 @@ class AiderTest extends HarnessTestCase {
 	void isNotOfferedTheMcpServerOfEclipse() throws Exception {
 		assertNull(Harnesses.AIDER.mcp(), "Aider knows no MCP server");
 		eclipseMcpRuns();
-		assertEquals(new Start("", ""), started(open(program("aider")), 1));
+		assertEquals(new Start("", TOKEN), started(open(program("aider")), 1));
 		assertTrue(asked.isEmpty());
 	}
 }

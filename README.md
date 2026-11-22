@@ -112,13 +112,17 @@ any other program.
   agent starts so that it uses it at once: *Add*, *Always Add* (the next times without asking), *Not
   Now* (until Eclipse restarts) or *Never Ask* (*Always Add* and *Never Ask* are also in *Window >
   Preferences > Xterm Terminal > Coding Agents*). The agent adds the server itself, with its own command.
+  Every terminal, also a plain shell, gives the port and the token of the running server to its
+  programs in `ECLIPSE_MCP_PORT` and `ECLIPSE_MCP_TOKEN`, so that a configuration of an agent can
+  refer to them instead of keeping them: `http://127.0.0.1:${ECLIPSE_MCP_PORT}/mcp` with the header
+  `Authorization: Bearer ${ECLIPSE_MCP_TOKEN}`.
 - A command line that chooses its conversation itself (`claude --continue`, `codex resume`...), or
   that runs another command of the agent (`codex exec`...), is run as it is.
 
 | Agent | Program | Conversation of a reopened terminal | MCP server of Eclipse |
 |---|---|---|---|
 | Claude Code | `claude` | its own: started with `--session-id`, resumed with `--resume` | `claude mcp add --scope user` |
-| Codex | `codex` | the last one of the folder: `codex resume --last` | `codex mcp add`; the token is in the environment of the terminals (`XTERM4ECLIPSE_MCP_TOKEN`) |
+| Codex | `codex` | the last one of the folder: `codex resume --last` | `codex mcp add`; the token is in the environment of the terminals (`ECLIPSE_MCP_TOKEN`) |
 | OpenCode | `opencode` | its own, found in `opencode session list` after the first message and resumed with `--session`; else the last one (`--continue`) | `opencode mcp add --global` |
 | Reasonix (DeepSeek) | `reasonix` | the last one of the folder: `--continue` | `reasonix mcp add` |
 | Gemini CLI | `gemini` | its own: `--session-id`, resumed with `--resume` | `gemini mcp add -s user` |

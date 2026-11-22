@@ -69,17 +69,19 @@ class CodexTest extends HarnessTestCase {
 	void readsTheTokenOfTheServerOfEclipseInItsEnvironment() throws Exception {
 		Harness.Mcp mcp = Harnesses.CODEX.mcp();
 		assertEquals(List.of("mcp", "add", NAME, "--url", "http://127.0.0.1:8642/mcp", "--bearer-token-env-var",
-				"XTERM4ECLIPSE_MCP_TOKEN"), mcp.adding(new EclipseMcp.Endpoint("http://127.0.0.1:8642/mcp", TOKEN)));
+				"ECLIPSE_MCP_TOKEN"), mcp.adding(new EclipseMcp.Endpoint("http://127.0.0.1:8642/mcp", TOKEN)));
 		assertNull(mcp.removing(), "Codex replaces a server of the same name");
 		assertTrue(mcp.tokenInEnvironment());
-		assertTrue(new Run("codex").companion.environment().isEmpty(), "no server of Eclipse");
+		// Every terminal of the agents gives the port and the token of the server to its programs.
+		assertTrue(new HarnessExtension().environment().isEmpty(), "no server of Eclipse");
 		eclipseMcpRuns();
-		assertEquals(Map.of("XTERM4ECLIPSE_MCP_TOKEN", TOKEN), new Run("codex").companion.environment());
+		Map<String, String> variables = new HarnessExtension().environment();
+		assertEquals(TOKEN, variables.get(EclipseMcp.TOKEN_VARIABLE));
 	}
 
 	@Test
 	void mayKnowTheServerOfEclipseAlready() throws Exception {
-		String server = "[mcp_servers." + NAME + "]\nurl = \"{url}\"\nbearer_token_env_var = \"XTERM4ECLIPSE_MCP_TOKEN\"\n";
+		String server = "[mcp_servers." + NAME + "]\nurl = \"{url}\"\nbearer_token_env_var = \"ECLIPSE_MCP_TOKEN\"\n";
 		assertKnownFrom(home.resolve(".codex/config.toml").toString(), server);
 		assertKnownFrom(".codex/config.toml", server);
 		environment.put("CODEX_HOME", temp.resolve("moved").toString());
@@ -94,7 +96,7 @@ class CodexTest extends HarnessTestCase {
 	@Test
 	void isOfferedTheMcpServerOfEclipse() throws Exception {
 		Start start = assertOfferedTheMcpServerOfEclipse("codex",
-				"mcp add " + NAME + " --url {url} --bearer-token-env-var XTERM4ECLIPSE_MCP_TOKEN", null, null,
+				"mcp add " + NAME + " --url {url} --bearer-token-env-var ECLIPSE_MCP_TOKEN", null, null,
 				home.resolve(".codex/config.toml"));
 		assertEquals(TOKEN, start.token(), "the terminal gives the token to Codex");
 	}
