@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.eclipse.core.commands.Command;
 import org.eclipse.core.commands.ExecutionException;
 import org.eclipse.core.commands.ParameterizedCommand;
 import org.eclipse.core.commands.common.CommandException;
@@ -637,8 +639,7 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 	boolean runEclipseShortcut(String name) {
 		KeySequence sequence = name == null ? null : EclipseShortcuts.sequence(name);
 		IBindingService bindings = workbench().getService(IBindingService.class);
-		Binding binding = sequence == null || bindings == null ? null : bindings.getPerfectMatch(sequence);
-		ParameterizedCommand command = binding == null ? null : binding.getParameterizedCommand();
+		ParameterizedCommand command = sequence == null || bindings == null ? null : boundCommand(bindings, sequence);
 		if (command == null || !command.getCommand().isHandled()) {
 			return false;
 		}
@@ -657,6 +658,32 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			}
 		});
 		return true;
+	}
+
+	private ParameterizedCommand boundCommand(IBindingService bindings, KeySequence sequence) {
+		Binding binding = bindings.getPerfectMatch(sequence);
+		if (binding != null) {
+			return binding.getParameterizedCommand();
+		}
+		Collection<?> conflicts = bindings.getConflictsFor(sequence);
+		IHandlerService handlers = workbench().getService(IHandlerService.class);
+		if (conflicts == null || handlers == null) {
+			return null;
+		}
+		List<ParameterizedCommand> runnable = conflicts.stream()
+				.map(conflict -> conflict instanceof Binding candidate ? candidate.getParameterizedCommand() : null)
+				.distinct().filter(command -> command != null && canRun(command.getCommand(), handlers)).toList();
+		return runnable.size() == 1 ? runnable.get(0) : null;
+	}
+
+	private static boolean canRun(Command command, IHandlerService handlers) {
+		try {
+			command.setEnabled(handlers.getCurrentState());
+			return command.isEnabled();
+		} catch (RuntimeException e) {
+			XtermPlugin.log("Could not tell whether " + command.getId() + " can run", e); //$NON-NLS-1$ //$NON-NLS-2$
+			return false;
+		}
 	}
 
 	/**

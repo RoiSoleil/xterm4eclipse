@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.BooleanSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -1540,6 +1541,64 @@ class XtermViewTest {
 		assertEquals(M1 + "+SHIFT+Y", looked.get(looked.size() - 1));
 		assertFalse(view.runEclipseShortcut("not a key+++"));
 		assertFalse(view.runEclipseShortcut(null));
+	}
+
+	@Test
+	void anEclipseShortcutBoundToSeveralCommandsRunsTheOnlyOneThatCanRun() throws Exception {
+		IEvaluationContext state = new EvaluationContext(null, new Object());
+		CommandManager commands = new CommandManager();
+		boolean[] symbolsEnabled = {false};
+		ParameterizedCommand openType = command(commands, "org.eclipse.jdt.ui.navigate.open.type", state, () -> true);
+		ParameterizedCommand symbols = command(commands, "org.eclipse.lsp4e.symbolInWorkspace", state,
+				() -> symbolsEnabled[0]);
+		ParameterizedCommand unhandled = new ParameterizedCommand(commands.getCommand("unhandled"), null);
+		ParameterizedCommand failing = command(commands, "failing", state, () -> {
+			throw new IllegalStateException("handler failed");
+		});
+		KeySequence ctrlShiftT = KeySequence.getInstance(M1 + "+SHIFT+T");
+		List<Binding> conflicts = new ArrayList<>(List.of(binding(ctrlShiftT, unhandled), binding(ctrlShiftT, failing),
+				binding(ctrlShiftT, symbols), binding(ctrlShiftT, openType),
+				binding(ctrlShiftT, new ParameterizedCommand(openType.getCommand(), null))));
+		List<Object> executed = new ArrayList<>();
+		workbench.bindings.on("getConflictsFor", args -> args[0].equals(ctrlShiftT) ? conflicts : null);
+		workbench.handlers.on("getCurrentState", args -> state);
+		workbench.handlers.on("executeCommand", args -> executed.add(args[0]));
+		XtermView view = open();
+
+		key(view, "KeyT", "T", true, true);
+		await("command run", () -> executed.size() == 1);
+		assertSame(openType, executed.get(0));
+
+		symbolsEnabled[0] = true;
+		assertFalse(view.runEclipseShortcut(M1 + "+SHIFT+T"));
+		conflicts.removeIf(binding -> binding.getParameterizedCommand().equals(openType));
+		assertTrue(view.runEclipseShortcut(M1 + "+SHIFT+T"));
+		await("other command run", () -> executed.size() == 2);
+		assertSame(symbols, executed.get(1));
+		symbolsEnabled[0] = false;
+		assertFalse(view.runEclipseShortcut(M1 + "+SHIFT+T"));
+		assertFalse(view.runEclipseShortcut(M1 + "+SHIFT+R"));
+	}
+
+	private static ParameterizedCommand command(CommandManager commands, String id, IEvaluationContext state,
+			BooleanSupplier enabled) {
+		Command command = commands.getCommand(id);
+		command.setHandler(new AbstractHandler() {
+			@Override
+			public void setEnabled(Object evaluationContext) {
+				setBaseEnabled(evaluationContext == state && enabled.getAsBoolean());
+			}
+
+			@Override
+			public Object execute(ExecutionEvent event) {
+				return null;
+			}
+		});
+		return new ParameterizedCommand(command, null);
+	}
+
+	private static Binding binding(KeySequence sequence, ParameterizedCommand command) {
+		return new KeyBinding(sequence, command, "scheme", "context", null, null, null, Binding.SYSTEM);
 	}
 
 	/** A key pressed with M1 (Ctrl, Command on macOS) or not. */
