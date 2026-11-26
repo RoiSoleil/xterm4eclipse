@@ -19,7 +19,7 @@
    <extension point="org.eclipse.ui.preferencePages">
       <page
             id="org.eclipse.xterm4eclipse.claude.preferences"
-            name="Claude Code Chat"
+            name="Claude Code"
             category="org.eclipse.xterm4eclipse.preferences"
             class="org.eclipse.xterm4eclipse.claude.ChatPreferencePage"/>
    </extension>

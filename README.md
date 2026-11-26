@@ -186,9 +186,10 @@ Claude Desktop: it runs the `claude` program of the computer, which must be inst
   that is deleted when Claude Code ends): its projects, problems, launches... No question is asked and
   nothing is added to the configuration of the user, unlike the terminals of the coding agents. A chat
   does not give it if Claude Code already has it in its configuration.
-- *Window > Preferences > Xterm Terminal > Claude Code Chat*: the program of Claude Code (else `claude`
-  on the PATH or where its installer puts it), the model and the permission mode of new chats, more
-  arguments, whether a new chat continues the last conversation of its project, and whether a chat
+- *Window > Preferences > Xterm Terminal > Claude Code*: the program of Claude Code (else `claude`
+  on the PATH or where its installer puts it), the model of new chats, the permission mode of new chats
+  and of the terminals that run Claude Code (its entry of the terminal menus and Resume in a Terminal),
+  more arguments, whether a new chat continues the last conversation of its project, and whether a chat
   connects Claude Code to the MCP server of Eclipse.
 
 Claude Code runs beside the view (`claude -p --input-format stream-json --output-format stream-json

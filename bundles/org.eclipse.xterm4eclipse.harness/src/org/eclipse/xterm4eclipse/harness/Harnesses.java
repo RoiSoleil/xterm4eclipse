@@ -32,7 +32,7 @@ final class Harnesses {
 					"plugin", "purge", "respawn", "rm", "setup-token", "stop", "ultrareview", "update"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$ //$NON-NLS-8$
 			Set.of("-r", "--resume", "-c", "--continue", "--session-id", "-p", "--print", "--from-pr", "--teleport", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$ //$NON-NLS-8$ //$NON-NLS-9$
 					"--fork-session"), //$NON-NLS-1$
-			Set.of(),
+			Set.of("--permission-mode", "--model"), //$NON-NLS-1$ //$NON-NLS-2$
 			Sessions.own(List.of("--session-id", "{id}"), List.of("--resume", "{id}"), //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
 					// projects/<folder of the conversation>/<id>.jsonl
 					files(2, id -> Pattern.quote(id + ".jsonl"), List.of(() -> claudeHome().resolve("projects")))), //$NON-NLS-1$ //$NON-NLS-2$

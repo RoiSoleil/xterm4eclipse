@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BooleanSupplier;
 import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -69,6 +70,7 @@ abstract class HarnessTestCase {
 	/** The files of the stand-in for the program of the agent. */
 	private Path stand;
 	private int views;
+	private Supplier<String> previousPermissionMode;
 
 	/** The agent under test. */
 	abstract Harness harness();
@@ -91,12 +93,15 @@ abstract class HarnessTestCase {
 			return answer;
 		};
 		SessionFinder.delayMillis = 200;
+		previousPermissionMode = HarnessExtension.claudePermissionMode;
+		HarnessExtension.claudePermissionMode = () -> null;
 		HarnessPlugin.preferences().setToDefault(HarnessPlugin.PREF_OFFER_ECLIPSE_MCP);
 		HarnessPlugin.preferences().setToDefault(HarnessPlugin.PREF_ADD_ECLIPSE_MCP_WITHOUT_ASKING);
 	}
 
 	@AfterEach
 	void restore() throws Exception {
+		HarnessExtension.claudePermissionMode = previousPermissionMode;
 		if (workbench != null) {
 			workbench.close();
 		}

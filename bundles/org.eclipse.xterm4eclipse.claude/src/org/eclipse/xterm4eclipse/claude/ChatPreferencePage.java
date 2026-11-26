@@ -16,8 +16,9 @@ public class ChatPreferencePage extends FieldEditorPreferencePage implements IWo
 	public ChatPreferencePage() {
 		super(GRID);
 		setPreferenceStore(ChatPlugin.preferences());
-		setDescription("The chats with Claude Code (Window > Show View > Xterm > Claude Code Chat). Their " //$NON-NLS-1$
-				+ "conversations are those of the CLI and of Claude Desktop."); //$NON-NLS-1$
+		setDescription("Claude Code in the chats (Window > Show View > Xterm > Claude Code Chat) and in the terminals " //$NON-NLS-1$
+				+ "that run it. The permissions apply to both, the program also to Resume in a Terminal, the other " //$NON-NLS-1$
+				+ "settings to the chats. The conversations are those of the CLI and of Claude Desktop."); //$NON-NLS-1$
 	}
 
 	@Override

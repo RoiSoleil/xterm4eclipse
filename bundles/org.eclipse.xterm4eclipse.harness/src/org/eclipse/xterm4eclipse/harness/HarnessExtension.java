@@ -4,7 +4,11 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Supplier;
 
+import org.eclipse.core.runtime.Platform;
+import org.eclipse.core.runtime.preferences.IPreferencesService;
 import org.eclipse.xterm4eclipse.spi.CommandLine;
 import org.eclipse.xterm4eclipse.spi.Terminal;
 import org.eclipse.xterm4eclipse.spi.TerminalCompanion;
@@ -35,6 +39,37 @@ public final class HarnessExtension implements TerminalExtension {
 			}
 		}
 		return profiles;
+	}
+
+	/** The permission mode of the chats with Claude Code, in the preferences of its plug-in. */
+	static Supplier<String> claudePermissionMode = () -> {
+		try {
+			IPreferencesService preferences = Platform.getPreferencesService();
+			return preferences == null ? null
+					: preferences.getString("org.eclipse.xterm4eclipse.claude", "permissionMode", null, null); //$NON-NLS-1$ //$NON-NLS-2$
+		} catch (RuntimeException | LinkageError e) {
+			return null;
+		}
+	};
+
+	/** The permission modes of the chats that Claude Code starts in, all but the default one. */
+	private static final Set<String> CLAUDE_PERMISSION_MODES = Set.of("acceptEdits", "auto", "plan"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+
+	/**
+	 * @param own
+	 *            the arguments of the command line of the terminal
+	 * @return the arguments that start Claude Code in the permission mode of the chats: none for the
+	 *         default one, or when the command line chooses its permissions itself
+	 */
+	static List<String> claudePermissionArguments(List<String> own) {
+		for (String argument : own) {
+			if (argument.equals("--permission-mode") || argument.startsWith("--permission-mode=") //$NON-NLS-1$ //$NON-NLS-2$
+					|| argument.equals("--dangerously-skip-permissions")) { //$NON-NLS-1$
+				return List.of();
+			}
+		}
+		String mode = claudePermissionMode.get();
+		return mode != null && CLAUDE_PERMISSION_MODES.contains(mode) ? List.of("--permission-mode", mode) : List.of(); //$NON-NLS-1$
 	}
 
 	/** @return the command line that runs the agent on this machine, or {@code null} if it is not installed */

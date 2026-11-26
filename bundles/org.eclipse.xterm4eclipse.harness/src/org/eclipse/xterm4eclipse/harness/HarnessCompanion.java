@@ -1,6 +1,7 @@
 package org.eclipse.xterm4eclipse.harness;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -74,6 +75,10 @@ final class HarnessCompanion implements TerminalCompanion {
 		}
 		List<String> own = found.invocation().arguments();
 		List<String> added = conversation(own, resume);
+		if (added != null && harness == Harnesses.CLAUDE) {
+			added = new ArrayList<>(added);
+			added.addAll(HarnessExtension.claudePermissionArguments(own));
+		}
 		if (added == null) {
 			resumed = false;
 			return arguments;

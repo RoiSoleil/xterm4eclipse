@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 
 import org.eclipse.ui.XMLMemento;
 import org.eclipse.xterm4eclipse.TestWorkbench;
@@ -45,6 +46,31 @@ class ClaudeCodeTest extends HarnessTestCase {
 				"through the login shell of the user");
 		assertEquals("/bin/bash -l -i -c claude", offered("Linux", Map.of(), "claude"));
 		assertNull(offered("Linux", Map.of("SHELL", "/bin/zsh"), "other"), "not on the PATH: not offered");
+	}
+
+	@Test
+	void startsInThePermissionModeOfTheChats() {
+		Supplier<String> previous = HarnessExtension.claudePermissionMode;
+		try {
+			HarnessExtension.claudePermissionMode = () -> "auto";
+			assertArrayEquals(line("claude", "--session-id", ID, "--permission-mode", "auto"), new Run("claude").with(ID).start());
+			assertArrayEquals(line("/bin/zsh", "-l", "-i", "-c", "claude --session-id " + ID + " --permission-mode auto"),
+					new Run("/bin/zsh", "-l", "-i", "-c", "claude").with(ID).start(), "the command line of the menus stays the same");
+			assertArrayEquals(line("claude", "--permission-mode", "plan", "--session-id", ID),
+					new Run("claude", "--permission-mode", "plan").with(ID).start(), "the mode of the command line");
+			assertArrayEquals(line("claude", "--permission-mode=plan", "--session-id", ID),
+					new Run("claude", "--permission-mode=plan").with(ID).start());
+			assertArrayEquals(line("claude", "--dangerously-skip-permissions", "--session-id", ID),
+					new Run("claude", "--dangerously-skip-permissions").with(ID).start(), "the permissions of the command line");
+			HarnessExtension.claudePermissionMode = () -> "default";
+			assertArrayEquals(line("claude", "--session-id", ID), new Run("claude").with(ID).start());
+			HarnessExtension.claudePermissionMode = () -> "bypassPermissions";
+			assertArrayEquals(line("claude", "--session-id", ID), new Run("claude").with(ID).start(), "only the modes of the chats");
+			HarnessExtension.claudePermissionMode = () -> null;
+			assertArrayEquals(line("claude", "--session-id", ID), new Run("claude").with(ID).start(), "no chat plug-in");
+		} finally {
+			HarnessExtension.claudePermissionMode = previous;
+		}
 	}
 
 	@Test

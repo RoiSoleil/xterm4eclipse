@@ -25,6 +25,13 @@ final class ClaudeCommand {
 	}
 	static final String DEFAULT_MODE = "default"; //$NON-NLS-1$
 
+	/** @return the arguments that start Claude Code in the permission mode, none for the default one */
+	static List<String> permissionMode(String mode) {
+		return mode != null && PERMISSION_MODES.containsKey(mode) && !mode.equals(DEFAULT_MODE)
+				? List.of("--permission-mode", mode) //$NON-NLS-1$
+				: List.of();
+	}
+
 	/** The models that a chat offers: the aliases of Claude Code for the latest ones. */
 	static final List<String> MODELS = List.of("opus", "sonnet", "haiku"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 
@@ -83,10 +90,7 @@ final class ClaudeCommand {
 			arguments.add("--model"); //$NON-NLS-1$
 			arguments.add(model);
 		}
-		if (mode != null && PERMISSION_MODES.containsKey(mode) && !mode.equals(DEFAULT_MODE)) {
-			arguments.add("--permission-mode"); //$NON-NLS-1$
-			arguments.add(mode);
-		}
+		arguments.addAll(permissionMode(mode));
 		arguments.addAll(more(more));
 		if (mcpConfig != null) {
 			// Last: the option takes all the values that follow it, which must not be arguments of the user.

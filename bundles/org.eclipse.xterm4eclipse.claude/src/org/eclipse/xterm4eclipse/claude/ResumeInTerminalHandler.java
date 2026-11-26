@@ -76,9 +76,13 @@ public class ResumeInTerminalHandler extends AbstractHandler {
 					"The program of Claude Code set in the preferences is not a file: " + configured.trim()); //$NON-NLS-1$
 			return;
 		}
-		String commandLine = CommandLine.quote(program == null ? "claude" : program.getPath()) + " --resume " + chosen.id(); //$NON-NLS-1$ //$NON-NLS-2$
+		StringBuilder commandLine = new StringBuilder(CommandLine.quote(program == null ? "claude" : program.getPath())) //$NON-NLS-1$
+				.append(" --resume ").append(chosen.id()); //$NON-NLS-1$
+		for (String argument : ClaudeCommand.permissionMode(ChatPlugin.preference(ChatPlugin.PREF_PERMISSION_MODE))) {
+			commandLine.append(' ').append(argument);
+		}
 		try {
-			opener.open(page, commandLine, directory);
+			opener.open(page, commandLine.toString(), directory);
 		} catch (PartInitException e) {
 			ChatPlugin.log("Could not open a terminal with Claude Code", e); //$NON-NLS-1$
 		}

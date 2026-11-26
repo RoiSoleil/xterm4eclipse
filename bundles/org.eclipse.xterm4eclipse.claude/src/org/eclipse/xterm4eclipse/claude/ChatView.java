@@ -484,7 +484,7 @@ public class ChatView extends ViewPart {
 		File program = ClaudeCommand.program(ChatPlugin.preference(ChatPlugin.PREF_PROGRAM));
 		if (program == null) {
 			post(notice("error", "Claude Code was not found. Install it (https://claude.com/claude-code), or choose its " //$NON-NLS-1$ //$NON-NLS-2$
-					+ "program in Window > Preferences > Xterm Terminal > Claude Code Chat.")); //$NON-NLS-1$
+					+ "program in Window > Preferences > Xterm Terminal > Claude Code.")); //$NON-NLS-1$
 			return false;
 		}
 		// Resumed if Claude Code has kept it: it keeps nothing before the first message.

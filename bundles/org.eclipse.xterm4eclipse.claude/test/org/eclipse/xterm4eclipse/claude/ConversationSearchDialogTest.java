@@ -235,6 +235,31 @@ class ConversationSearchDialogTest {
 	}
 
 	@Test
+	void resumesInATerminalInThePermissionModeOfTheChats() {
+		ResumeInTerminalHandler.Opener previousOpener = ResumeInTerminalHandler.opener;
+		List<String> opened = new ArrayList<>();
+		Shell parent = new Shell(DISPLAY);
+		try {
+			ResumeInTerminalHandler.opener = (page, commandLine, directory) -> opened.add(commandLine);
+			Conversations.Conversation conversation = new Conversations.Conversation(ConversationSearchTest.A, "t", 0, project);
+			ChatPlugin.preferences().setValue(ChatPlugin.PREF_PERMISSION_MODE, "auto");
+			ResumeInTerminalHandler.open(parent, null, conversation, project);
+			ChatPlugin.preferences().setValue(ChatPlugin.PREF_PERMISSION_MODE, "default");
+			ResumeInTerminalHandler.open(parent, null, conversation, project);
+			ChatPlugin.preferences().setValue(ChatPlugin.PREF_PERMISSION_MODE, "auto; rm -rf x");
+			ResumeInTerminalHandler.open(parent, null, conversation, project);
+			assertEquals(3, opened.size());
+			assertTrue(opened.get(0).endsWith(" --resume " + ConversationSearchTest.A + " --permission-mode auto"), opened.get(0));
+			assertTrue(opened.get(1).endsWith(" --resume " + ConversationSearchTest.A), opened.get(1));
+			assertTrue(opened.get(2).endsWith(" --resume " + ConversationSearchTest.A), opened.get(2));
+		} finally {
+			ChatPlugin.preferences().setToDefault(ChatPlugin.PREF_PERMISSION_MODE);
+			ResumeInTerminalHandler.opener = previousOpener;
+			parent.dispose();
+		}
+	}
+
+	@Test
 	void resumesWhereTheConversationWas() {
 		ResumeHandler.MissingDirectory previous = ResumeHandler.missingDirectory;
 		ResumeInTerminalHandler.Opener previousOpener = ResumeInTerminalHandler.opener;
