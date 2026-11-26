@@ -6,20 +6,27 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -599,6 +606,32 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 			}
 			return result;
 		});
+		function("javaResolveElided", args -> { //$NON-NLS-1$
+			String id = args.length > 0 && args[0] instanceof String text ? text : null;
+			Object[] paths = args.length > 1 && args[1] instanceof Object[] array ? array : new Object[0];
+			if (id == null) {
+				return null;
+			}
+			File directory = currentDirectory();
+			Browser target = browser;
+			int generation = ELIDED_GENERATION.incrementAndGet();
+			ELIDED_SEARCHES.execute(() -> {
+				String[] files = new String[paths.length];
+				try {
+					long deadline = System.nanoTime() + ELIDED_REQUEST_TIME;
+					BooleanSupplier cancelled = () -> generation != ELIDED_GENERATION.get() || System.nanoTime() > deadline;
+					for (int i = 0; i < paths.length && !cancelled.getAsBoolean(); i++) {
+						File file = paths[i] instanceof String text ? resolveElided(text, directory, cancelled) : null;
+						files[i] = file == null ? null : file.getPath();
+					}
+				} catch (RuntimeException e) {
+					XtermPlugin.log("Could not look for " + Arrays.toString(paths), e); //$NON-NLS-1$
+				} finally {
+					answerElided(target, id, files);
+				}
+			});
+			return null;
+		});
 		function("javaOpenFolder", args -> { //$NON-NLS-1$
 			File folder = new File((String) args[0]);
 			// Not from within the call: the file manager may take a while to start.
@@ -743,6 +776,253 @@ public class XtermView extends ViewPart implements PtySession.Listener, ISaveabl
 		File parent = file.getParentFile();
 		return absolute && !link && !file.exists() && parent != null && parent.getParentFile() != null && parent.isDirectory()
 				&& parent.canWrite() ? file : null;
+	}
+
+	private static final String ELLIPSIS = "\u2026"; //$NON-NLS-1$
+
+	private static final int ELIDED_SEARCH_LIMIT = 200_000;
+
+	private static final long ELIDED_SEARCH_TIME = TimeUnit.SECONDS.toNanos(2);
+
+	private static final long ELIDED_REQUEST_TIME = TimeUnit.SECONDS.toNanos(6);
+
+	private static final long ELIDED_LIFETIME = TimeUnit.SECONDS.toNanos(10);
+
+	private static final long ELIDED_MISS_LIFETIME = TimeUnit.SECONDS.toNanos(5);
+
+	private static final long ELIDED_GIVEN_UP_LIFETIME = TimeUnit.SECONDS.toNanos(30);
+
+	private static final int COMPLETE = 0;
+
+	private static final int GIVEN_UP = 1;
+
+	private static final int CANCELLED = 2;
+
+	private static final AtomicInteger ELIDED_GENERATION = new AtomicInteger();
+
+	private void answerElided(Browser target, String id, String[] files) {
+		StringBuilder script = new StringBuilder("window.xtermElidedResolved && xtermElidedResolved(").append(jsonString(id)).append(",["); //$NON-NLS-1$
+		for (int i = 0; i < files.length; i++) {
+			script.append(i == 0 ? "" : ",").append(files[i] == null ? "null" : jsonString(files[i])); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+		}
+		script.append("])"); //$NON-NLS-1$
+		if (display.isDisposed()) {
+			return;
+		}
+		try {
+			display.asyncExec(() -> {
+				if (!target.isDisposed()) {
+					target.execute(script.toString());
+				}
+			});
+		} catch (SWTException e) {
+			XtermPlugin.log("Could not answer the page", e); //$NON-NLS-1$
+		}
+	}
+
+	private static final ExecutorService ELIDED_SEARCHES = Executors.newSingleThreadExecutor(runnable -> {
+		Thread thread = new Thread(runnable, "Xterm elided paths"); //$NON-NLS-1$
+		thread.setDaemon(true);
+		return thread;
+	});
+
+	private static final Set<String> PROJECT_FILES = Set.of("pom.xml", "build.gradle", "build.gradle.kts", ".project"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+
+	private static final Set<String> OUTPUT_FOLDERS = Set.of("target", "bin", "build", "out"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
+
+	private static final boolean CASE_INSENSITIVE = System.getProperty("os.name", "").startsWith("Windows") //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+			|| System.getProperty("os.name", "").startsWith("Mac"); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+
+	private record ElidedMatch(File file, long time, long lifetime) {
+	}
+
+	private static final Map<String, ElidedMatch> ELIDED_MATCHES = new LinkedHashMap<>(16, 0.75f, true) {
+		private static final long serialVersionUID = 1L;
+
+		@Override
+		protected boolean removeEldestEntry(Map.Entry<String, ElidedMatch> eldest) {
+			return size() > 64;
+		}
+	};
+
+	static File resolveElided(String path, File directory) {
+		return resolveElided(path, directory, () -> false);
+	}
+
+	private static File resolveElided(String path, File directory, BooleanSupplier cancelled) {
+		if (directory == null) {
+			return null;
+		}
+		String[] segments = path.split("[/\\\\]", -1); //$NON-NLS-1$
+		int elision = -1;
+		for (int i = 0; i < segments.length; i++) {
+			if (segments[i].equals(ELLIPSIS)) {
+				if (elision >= 0) {
+					return null;
+				}
+				elision = i;
+			}
+		}
+		if (elision < 0 || elision == segments.length - 1) {
+			return null;
+		}
+		String[] suffix = Arrays.copyOfRange(segments, elision + 1, segments.length);
+		for (String segment : suffix) {
+			if (segment.isEmpty() || segment.equals(".") || segment.equals("..")) { //$NON-NLS-1$ //$NON-NLS-2$
+				return null;
+			}
+		}
+		String prefix = elision == 0 ? "" : String.join("/", Arrays.copyOfRange(segments, 0, elision)) + '/'; //$NON-NLS-1$ //$NON-NLS-2$
+		File base = prefix.isEmpty() ? directory : resolveFolder(prefix, directory);
+		if (base == null) {
+			return null;
+		}
+		try {
+			base = base.getCanonicalFile();
+		} catch (IOException e) {
+			return null;
+		}
+		Path allowed;
+		try {
+			Path home = new File(System.getProperty("user.home")).getCanonicalFile().toPath(); //$NON-NLS-1$
+			Path shell = directory.getCanonicalFile().toPath();
+			File repository = repositoryRoot(directory.getCanonicalFile());
+			if (repository != null && home.startsWith(repository.toPath())) {
+				repository = null;
+			}
+			Path from = base.toPath();
+			allowed = repository != null && from.startsWith(repository.toPath()) ? repository.toPath() : shell;
+			if (base.getParentFile() == null || home.startsWith(from) || !from.startsWith(allowed)) {
+				return null;
+			}
+		} catch (IOException | InvalidPathException e) {
+			return null;
+		}
+		String key = allowed + "\0" + base.getPath() + '\0' + String.join("/", suffix); //$NON-NLS-1$ //$NON-NLS-2$
+		synchronized (ELIDED_MATCHES) {
+			ElidedMatch known = ELIDED_MATCHES.get(key);
+			if (known != null && System.nanoTime() - known.time() < known.lifetime()
+					&& (known.file() == null || known.file().isFile())) {
+				return known.file();
+			}
+		}
+		int[] outcome = { CANCELLED };
+		File file = findElided(base.toPath(), suffix, allowed, System.nanoTime() + ELIDED_SEARCH_TIME, cancelled, outcome);
+		if (outcome[0] != CANCELLED) {
+			long lifetime = file != null ? ELIDED_LIFETIME : outcome[0] == GIVEN_UP ? ELIDED_GIVEN_UP_LIFETIME : ELIDED_MISS_LIFETIME;
+			synchronized (ELIDED_MATCHES) {
+				ELIDED_MATCHES.put(key, new ElidedMatch(file, System.nanoTime(), lifetime));
+			}
+		}
+		return file;
+	}
+
+	private static File findElided(Path root, String[] suffix, Path allowed, long deadline, BooleanSupplier cancelled, int[] outcome) {
+		String name = suffix[suffix.length - 1];
+		Set<File> found = new LinkedHashSet<>();
+		int[] visited = { 0 };
+		boolean[] stopped = { false };
+		outcome[0] = COMPLETE;
+		try {
+			Files.walkFileTree(root, new SimpleFileVisitor<Path>() {
+				private FileVisitResult count() {
+					if (cancelled.getAsBoolean()) {
+						outcome[0] = CANCELLED;
+					} else if (++visited[0] > ELIDED_SEARCH_LIMIT || System.nanoTime() > deadline) {
+						outcome[0] = GIVEN_UP;
+					}
+					if (outcome[0] != COMPLETE) {
+						stopped[0] = true;
+						return FileVisitResult.TERMINATE;
+					}
+					return FileVisitResult.CONTINUE;
+				}
+
+				@Override
+				public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+					if (count() == FileVisitResult.TERMINATE) {
+						return FileVisitResult.TERMINATE;
+					}
+					Path dirName = dir.getFileName();
+					if (dir.equals(root) || dirName == null) {
+						return FileVisitResult.CONTINUE;
+					}
+					String folder = dirName.toString();
+					boolean skipped = folder.startsWith(".") || sameName(folder, "node_modules") || outputFolder(dir); //$NON-NLS-1$ //$NON-NLS-2$
+					return skipped && !contains(suffix, folder) ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
+				}
+
+				@Override
+				public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+					if (count() == FileVisitResult.TERMINATE) {
+						return FileVisitResult.TERMINATE;
+					}
+					if (sameName(file.getFileName().toString(), name) && endsWith(root.relativize(file), suffix)
+							&& (attrs.isRegularFile() || attrs.isSymbolicLink() && Files.isRegularFile(file))) {
+						try {
+							File canonical = file.toFile().getCanonicalFile();
+							if (canonical.toPath().startsWith(allowed)) {
+								found.add(canonical);
+							}
+						} catch (IOException e) {
+							return FileVisitResult.CONTINUE;
+						}
+					}
+					return found.size() > 1 ? FileVisitResult.TERMINATE : FileVisitResult.CONTINUE;
+				}
+
+				@Override
+				public FileVisitResult visitFileFailed(Path file, IOException exc) {
+					return FileVisitResult.CONTINUE;
+				}
+			});
+		} catch (IOException e) {
+			return null;
+		}
+		return stopped[0] || found.size() != 1 ? null : found.iterator().next();
+	}
+
+	private static File repositoryRoot(File directory) {
+		File root = directory;
+		while (root != null && !new File(root, ".git").exists()) { //$NON-NLS-1$
+			root = root.getParentFile();
+		}
+		return root;
+	}
+
+	private static boolean outputFolder(Path dir) {
+		String folder = dir.getFileName().toString();
+		if (OUTPUT_FOLDERS.stream().noneMatch(name -> sameName(name, folder))) {
+			return false;
+		}
+		Path project = dir.getParent();
+		return project != null && PROJECT_FILES.stream().anyMatch(name -> Files.exists(project.resolve(name)));
+	}
+
+	private static boolean contains(String[] names, String name) {
+		for (String candidate : names) {
+			if (sameName(candidate, name)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static boolean sameName(String a, String b) {
+		return CASE_INSENSITIVE ? a.equalsIgnoreCase(b) : a.equals(b);
+	}
+
+	private static boolean endsWith(Path relative, String[] suffix) {
+		int count = relative.getNameCount();
+		if (count <= suffix.length) {
+			return false;
+		}
+		for (int i = 0; i < suffix.length; i++) {
+			if (!sameName(relative.getName(count - suffix.length + i).toString(), suffix[i])) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/**

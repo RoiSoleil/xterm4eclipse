@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
 import java.lang.reflect.Field;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -1949,6 +1950,120 @@ class XtermViewTest {
 		assertEquals("[null]", String.valueOf(view.browser.evaluate("return JSON.stringify(javaResolveFiles(['nothing.txt']))")));
 		assertEquals("[]", String.valueOf(view.browser.evaluate("return JSON.stringify(javaResolveFiles([]))")));
 		deleteTree(directory.toPath());
+	}
+
+	@Test
+	void pathsShortenedByClaudeCodeAreFound() throws Exception {
+		File directory = Files.createTempDirectory("xterm-elided").toFile().getCanonicalFile();
+		try {
+			File main = new File(directory, "app/src/main/java/p/Main.java");
+			Files.createDirectories(main.getParentFile().toPath());
+			Files.writeString(main.toPath(), "");
+			assertNull(XtermView.resolveFile("app/\u2026/Main.java", directory), "not a plain path");
+			assertEquals(main, XtermView.resolveElided("app/\u2026/Main.java", directory));
+			assertEquals(main, XtermView.resolveElided("app/\u2026/java/p/Main.java", directory));
+			assertEquals(main, XtermView.resolveElided("app\\\u2026\\p\\Main.java", directory));
+			assertEquals(main, XtermView.resolveElided("\u2026/p/Main.java", directory));
+			assertEquals(main, XtermView.resolveElided(directory.getPath() + "/app/\u2026/p/Main.java", directory));
+			assertNull(XtermView.resolveElided(directory.getPath() + "/app/\u2026/p/Main.java", new File(directory, "app/src")),
+					"only in the directory of the shell or its repository");
+			assertNull(XtermView.resolveElided("app/\u2026/q/Main.java", directory));
+			assertNull(XtermView.resolveElided("app/\u2026/Missing.java", directory));
+			assertNull(XtermView.resolveElided("app/src/\u2026/main/java/p/Main.java", directory), "\u2026 stands for at least one directory");
+			assertNull(XtermView.resolveElided("app/\u2026", directory));
+			assertNull(XtermView.resolveElided("app/\u2026/\u2026/Main.java", directory));
+			assertNull(XtermView.resolveElided("app/\u2026/../p/Main.java", directory));
+			assertNull(XtermView.resolveElided("nowhere/\u2026/Main.java", directory));
+			assertNull(XtermView.resolveElided("app/\u2026/Main.java", null));
+			assertNull(XtermView.resolveElided("/\u2026/p/Main.java", directory), "not the whole disk");
+
+			File first = new File(directory, "lib/x/a/Twice.java");
+			File second = new File(directory, "lib/x/b/Twice.java");
+			Files.createDirectories(first.getParentFile().toPath());
+			Files.createDirectories(second.getParentFile().toPath());
+			Files.writeString(first.toPath(), "");
+			Files.writeString(second.toPath(), "");
+			assertNull(XtermView.resolveElided("lib/\u2026/Twice.java", directory), "two files match");
+			assertEquals(second, XtermView.resolveElided("lib/\u2026/b/Twice.java", directory));
+
+			File hidden = new File(directory, ".cache/x/Hidden.java");
+			Files.createDirectories(hidden.getParentFile().toPath());
+			Files.writeString(hidden.toPath(), "");
+			assertNull(XtermView.resolveElided("\u2026/x/Hidden.java", directory), "hidden folders are not searched");
+			File workflow = new File(directory, "repo/.github/workflows/ci.yml");
+			Files.createDirectories(workflow.getParentFile().toPath());
+			Files.writeString(workflow.toPath(), "");
+			assertEquals(workflow, XtermView.resolveElided("\u2026/.github/workflows/ci.yml", directory), "unless the path names them");
+
+			File resource = new File(directory, "mod/src/main/resources/app.properties");
+			File copy = new File(directory, "mod/target/classes/app.properties");
+			Files.createDirectories(resource.getParentFile().toPath());
+			Files.createDirectories(copy.getParentFile().toPath());
+			Files.writeString(resource.toPath(), "");
+			Files.writeString(copy.toPath(), "");
+			assertNull(XtermView.resolveElided("\u2026/app.properties", directory), "an output folder only next to a build file");
+			Files.writeString(new File(directory, "mod/pom.xml").toPath(), "");
+			assertEquals(resource, XtermView.resolveElided("mod/\u2026/app.properties", directory), "not the copy in the output folder");
+			assertEquals(copy, XtermView.resolveElided("\u2026/target/classes/app.properties", directory));
+			File task = new File(directory, "mod/src/main/java/org/x/build/Task.java");
+			Files.createDirectories(task.getParentFile().toPath());
+			Files.writeString(task.toPath(), "");
+			assertEquals(task, XtermView.resolveElided("mod/\u2026/Task.java", directory), "a package named build");
+
+			File dotted = new File(directory, "notes\u2026/todo.txt");
+			Files.createDirectories(dotted.getParentFile().toPath());
+			Files.writeString(dotted.toPath(), "");
+			assertEquals(dotted, XtermView.resolveFile("notes\u2026/todo.txt", directory), "a name with \u2026 in it");
+
+			File linked = new File(directory, "links/sub/Linked.java");
+			Files.createDirectories(linked.getParentFile().toPath());
+			boolean links;
+			try {
+				Files.createSymbolicLink(linked.toPath(), main.toPath());
+				links = true;
+			} catch (UnsupportedOperationException | FileSystemException e) {
+				if (!System.getProperty("os.name").startsWith("Windows")) {
+					throw e;
+				}
+				links = false;
+			}
+			if (links) {
+				assertEquals(main, XtermView.resolveElided("links/\u2026/Linked.java", directory), "a link to a file");
+				File outside = Files.createTempFile("xterm-outside", ".java").toFile();
+				try {
+					Files.createSymbolicLink(new File(directory, "links/sub/Outside.java").toPath(), outside.toPath());
+					assertNull(XtermView.resolveElided("links/\u2026/Outside.java", directory), "not a link out of the folder");
+				} finally {
+					Files.delete(outside.toPath());
+				}
+			}
+
+			String home = System.getProperty("user.home");
+			System.setProperty("user.home", directory.getPath());
+			try {
+				assertNull(XtermView.resolveElided("~/\u2026/p/Main.java", directory), "nor the whole home directory");
+				assertNull(XtermView.resolveElided("\u2026/java/p/Main.java", directory), "not from the home directory");
+			} finally {
+				System.setProperty("user.home", home);
+			}
+
+			List<String> opened = new ArrayList<>();
+			XtermView view = open(new XtermView() {
+				@Override
+				void openFile(File file, int line, int column) {
+					opened.add(file.getPath());
+				}
+			});
+			assertEquals("[{\"start\":7,\"end\":24,\"text\":\"app\\\\\u2026\\\\p\\\\Main.java\",\"path\":\"app\\\\\u2026\\\\p\\\\Main.java\",\"line\":0,\"column\":0}]",
+					candidates(view, "Update(app\\\\\u2026\\\\p\\\\Main.java)"));
+			run(view, "cd '" + shellPath(directory) + "' && printf 'Update(app/\\342\\200\\246/p/Main.java)\\n'", "Update(app/\u2026/p/Main.java)");
+			awaitLink(view, "app/\u2026/p/Main.java");
+			click(view, "app/\u2026/p/Main.java", true);
+			await("file opened", () -> opened.size() == 1);
+			assertEquals(main.getPath(), opened.get(0));
+		} finally {
+			deleteTree(directory.toPath());
+		}
 	}
 
 	private static String candidates(XtermView view, String line) {

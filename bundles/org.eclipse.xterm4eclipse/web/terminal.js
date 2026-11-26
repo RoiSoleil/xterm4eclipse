@@ -58,6 +58,36 @@
 	}
 	window.xtermFileLinkCandidates = fileLinkCandidates;
 
+	var ELIDED_SEGMENT = /(^|[\\\/])\u2026[\\\/]/;
+	var elidedRequests = {};
+	var elidedPage = Date.now().toString(36) + Math.random().toString(36).substring(2);
+	var lastElidedRequest = 0;
+
+	function resolveElidedLater(paths, done) {
+		var id = elidedPage + '-' + ++lastElidedRequest;
+		elidedRequests[id] = {
+			done: done,
+			timer: setTimeout(function () {
+				window.xtermElidedResolved(id, []);
+			}, 10000)
+		};
+		try {
+			javaResolveElided(id, paths);
+		} catch (e) {
+			window.xtermElidedResolved(id, []);
+		}
+	}
+	window.xtermResolveElidedLater = resolveElidedLater;
+
+	window.xtermElidedResolved = function (id, files) {
+		var request = elidedRequests[id];
+		delete elidedRequests[id];
+		if (request) {
+			clearTimeout(request.timer);
+			request.done(files || []);
+		}
+	};
+
 	// Called by the Java side once the page is loaded and the java* functions are available.
 	function base64Bytes(base64) {
 		var binary = atob(base64);
@@ -123,8 +153,10 @@
 		// File paths printed by compilers, test runners, grep, git...: Ctrl+click opens them in Eclipse,
 		// at the line and column given with them (file:12:5, file(12,5), File "file", line 12); a
 		// folder opens in the file manager of the system.
+		var hoveredLine = 0;
 		term.registerLinkProvider({
 			provideLinks: function (y, callback) {
+				hoveredLine = y;
 				var line = term.buffer.active.getLine(y - 1);
 				var candidates = line && !bangCommandAt(y) ? fileLinkCandidates(line.translateToString(true)) : [];
 				if (!candidates.length) {
@@ -132,32 +164,36 @@
 					return;
 				}
 				var files = javaResolveFiles(candidates.map(function (c) { return c.path; })) || [];
-				var links = [];
-				candidates.forEach(function (candidate, i) {
-					var file = files[i];
-					if (!file) {
-						return;
-					}
-					links.push({
-						range: { start: { x: candidate.start + 1, y: y }, end: { x: candidate.end, y: y } },
-						text: candidate.text,
-						decorations: { pointerCursor: true, underline: true },
-						activate: function (e) {
-							if (!(e.ctrlKey || e.metaKey)) {
-								return;
-							}
-							// A folder: its path ends with a separator.
-							if (/[\\\/]$/.test(file)) {
-								javaOpenFolder(file);
-							} else {
-								javaOpenFile(file, candidate.line, candidate.column);
-							}
-						}
-					});
-				});
-				callback(links.length ? links : undefined);
+				callback(fileLinks(y, candidates, files));
 			}
 		});
+
+		function fileLinks(y, candidates, files) {
+			var links = [];
+			candidates.forEach(function (candidate, i) {
+				var file = files[i];
+				if (!file) {
+					return;
+				}
+				links.push({
+					range: { start: { x: candidate.start + 1, y: y }, end: { x: candidate.end, y: y } },
+					text: candidate.text,
+					decorations: { pointerCursor: true, underline: true },
+					activate: function (e) {
+						if (!(e.ctrlKey || e.metaKey)) {
+							return;
+						}
+						// A folder: its path ends with a separator.
+						if (/[\\\/]$/.test(file)) {
+							javaOpenFolder(file);
+						} else {
+							javaOpenFile(file, candidate.line, candidate.column);
+						}
+					}
+				});
+			});
+			return links.length ? links : undefined;
+		}
 
 		var bangLine = /^(\s*)!\s+([A-Za-z0-9_.\/~$"'].*?)\s*$/;
 		function bangCommandAt(y) {
@@ -225,6 +261,28 @@
 						}
 					}
 				}]);
+			}
+		});
+
+		term.registerLinkProvider({
+			provideLinks: function (y, callback) {
+				var line = term.buffer.active.getLine(y - 1);
+				var candidates = line && !bangCommandAt(y) ? fileLinkCandidates(line.translateToString(true)).filter(function (c) {
+					return ELIDED_SEGMENT.test(c.path);
+				}) : [];
+				var files = candidates.length ? javaResolveFiles(candidates.map(function (c) { return c.path; })) || [] : [];
+				candidates = candidates.filter(function (c, i) {
+					return !files[i];
+				});
+				if (!candidates.length) {
+					callback(undefined);
+					return;
+				}
+				var text = line.translateToString(true);
+				resolveElidedLater(candidates.map(function (c) { return c.path; }), function (found) {
+					var now = term.buffer.active.getLine(y - 1);
+					callback(hoveredLine === y && now && now.translateToString(true) === text ? fileLinks(y, candidates, found) : undefined);
+				});
 			}
 		});
 
