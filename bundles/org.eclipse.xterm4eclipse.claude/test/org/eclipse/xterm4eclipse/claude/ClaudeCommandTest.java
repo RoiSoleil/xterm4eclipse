@@ -79,6 +79,7 @@ class ClaudeCommandTest {
 				ClaudeCommand.arguments(ID, false, "opus", "acceptEdits", ""));
 		assertEquals(with("--session-id", ID, "--model", "claude-opus-4-1[1m]", "--permission-mode", "plan"),
 				ClaudeCommand.arguments(ID, false, "claude-opus-4-1[1m]", "plan", ""));
+		assertEquals(with("--session-id", ID, "--permission-mode", "auto"), ClaudeCommand.arguments(ID, false, "", "auto", ""));
 		assertEquals(with("--session-id", ID), ClaudeCommand.arguments(ID, false, "opus; rm x", "bypassPermissions", ""),
 				"neither a model that is not one nor a mode that the chat does not offer");
 		assertTrue(ClaudeCommand.isModel("sonnet"));

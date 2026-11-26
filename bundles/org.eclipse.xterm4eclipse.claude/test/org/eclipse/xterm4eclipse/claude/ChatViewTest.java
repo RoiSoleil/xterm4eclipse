@@ -476,6 +476,16 @@ class ChatViewTest {
 	}
 
 	@Test
+	void startsInAutoModeWhenThePreferencesSaySo() throws Exception {
+		ChatPlugin.preferences().setValue(ChatPlugin.PREF_PERMISSION_MODE, "auto");
+		ChatView view = open(null);
+		assertEquals("auto", view.browser.evaluate("return document.getElementById('mode').value"));
+		say(view, "hello");
+		awaitText(view, "Hello world");
+		assertTrue(read().get(0).endsWith("--permission-mode auto"), read().get(0));
+	}
+
+	@Test
 	void comesBackToItsConversationAfterARestart() throws Exception {
 		ChatView view = open(null);
 		say(view, "hello");

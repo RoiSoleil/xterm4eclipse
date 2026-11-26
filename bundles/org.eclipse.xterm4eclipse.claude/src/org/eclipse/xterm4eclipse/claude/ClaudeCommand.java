@@ -20,6 +20,7 @@ final class ClaudeCommand {
 	static {
 		PERMISSION_MODES.put("default", "Ask before edits"); //$NON-NLS-1$ //$NON-NLS-2$
 		PERMISSION_MODES.put("acceptEdits", "Accept edits"); //$NON-NLS-1$ //$NON-NLS-2$
+		PERMISSION_MODES.put("auto", "Auto mode"); //$NON-NLS-1$ //$NON-NLS-2$
 		PERMISSION_MODES.put("plan", "Plan mode"); //$NON-NLS-1$ //$NON-NLS-2$
 	}
 	static final String DEFAULT_MODE = "default"; //$NON-NLS-1$
