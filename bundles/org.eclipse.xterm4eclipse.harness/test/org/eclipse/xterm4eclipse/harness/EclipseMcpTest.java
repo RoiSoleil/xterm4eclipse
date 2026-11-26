@@ -1,6 +1,7 @@
 package org.eclipse.xterm4eclipse.harness;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -76,5 +77,51 @@ class EclipseMcpTest extends HarnessTestCase {
 		TestWorkbench.await("variables of the server", () -> TestWorkbench.screen(view).contains("mcp: " + port + ' ' + TOKEN));
 		TestWorkbench.type(view, "hello\r");
 		TestWorkbench.await("line", () -> TestWorkbench.screen(view).contains("got hello"));
+	}
+
+	@Test
+	void theServerMayStillStartOnlyIfInstalledAndEclipseHasJustStarted() throws Exception {
+		// The plug-in of the server is installed.
+		EclipseMcp.installed = () -> true;
+		EclipseMcp.uptime = () -> 0;
+		assertTrue(EclipseMcp.starting(), "no endpoint file yet");
+		endpoint("stopped", "http://127.0.0.1:1/mcp", TOKEN);
+		assertTrue(EclipseMcp.starting(), "the file of the last run of Eclipse");
+
+		EclipseMcp.uptime = () -> EclipseMcp.startupMillis;
+		assertFalse(EclipseMcp.starting(), "too late: the server does not start");
+		EclipseMcp.uptime = () -> 0;
+		EclipseMcp.installed = () -> false;
+		assertFalse(EclipseMcp.starting(), "no server");
+		EclipseMcp.installed = () -> true;
+		eclipseMcpRuns();
+		assertFalse(EclipseMcp.starting(), "it listens");
+	}
+
+	@Test
+	void anAgentThatEclipseReopensWaitsForTheServer() throws Exception {
+		EclipseMcp.installed = () -> true;
+		EclipseMcp.uptime = () -> 0;
+		endpoint("stopped", "http://127.0.0.1:1/mcp", TOKEN);
+		// Already known by the agent: nothing to ask once the server listens.
+		HarnessPlugin.preferences().setValue(HarnessPlugin.PREF_OFFER_ECLIPSE_MCP, false);
+		XtermView view = open(program("claude"));
+		TestWorkbench.await("waiting", () -> TestWorkbench.text(view).contains("Waiting for the MCP server of Eclipse"));
+		TestWorkbench.pump(1000);
+		assertFalse(TestWorkbench.text(view).contains("args: ["), "not started before the server listens");
+
+		eclipseMcpRuns();
+		assertEquals(TOKEN, started(view, 1).token(), "started with the token of the server");
+	}
+
+	@Test
+	void anAgentDoesNotWaitForAServerThatDoesNotStart() throws Exception {
+		EclipseMcp.installed = () -> true;
+		long[] now = {0};
+		EclipseMcp.uptime = () -> now[0];
+		XtermView view = open(program("claude"));
+		TestWorkbench.await("waiting", () -> TestWorkbench.text(view).contains("Waiting for the MCP server of Eclipse"));
+		now[0] = EclipseMcp.startupMillis;
+		assertEquals("", started(view, 1).token(), "started without the server");
 	}
 }

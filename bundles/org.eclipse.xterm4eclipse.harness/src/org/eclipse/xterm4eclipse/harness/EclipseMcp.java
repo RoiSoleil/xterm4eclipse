@@ -2,6 +2,7 @@ package org.eclipse.xterm4eclipse.harness;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.URI;
@@ -11,6 +12,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
+import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -55,6 +58,17 @@ public final class EclipseMcp {
 
 	/** The folder of the workspace; a test may change it. */
 	static Path workspace;
+	/** Whether the plug-in of the server is installed; a test may change it. */
+	static BooleanSupplier installed = () -> Platform.getBundle("com.vogella.eclipse.mcp.server") != null; //$NON-NLS-1$
+	/** How long Eclipse has been running, in milliseconds; a test may change it. */
+	static LongSupplier uptime = () -> ManagementFactory.getRuntimeMXBean().getUptime();
+	/**
+	 * How long after Eclipse starts its server may still be starting: it listened 40 seconds after
+	 * the start of a workspace of 140 projects.
+	 */
+	static long startupMillis = 180_000;
+	/** How often a terminal that waits for the server looks for it. */
+	static long pollMillis = 500;
 
 	private EclipseMcp() {
 	}
@@ -102,6 +116,40 @@ public final class EclipseMcp {
 			return null;
 		}
 		return new Endpoint(url, token);
+	}
+
+	/**
+	 * @return {@code true} if the server is installed but does not listen yet while Eclipse has just
+	 *         started: the terminals that Eclipse reopens start before it
+	 */
+	static boolean starting() {
+		try {
+			if (uptime.getAsLong() >= startupMillis || !installed.getAsBoolean()) {
+				return false;
+			}
+		} catch (RuntimeException | LinkageError e) {
+			return false;
+		}
+		return running() == null;
+	}
+
+	/**
+	 * Runs {@code then} in another thread once the server listens, or once it is too late for it to
+	 * start: an agent started before would not have the server.
+	 */
+	static void whenListening(Runnable then) {
+		Thread waiting = new Thread(() -> {
+			try {
+				while (starting()) {
+					Thread.sleep(pollMillis);
+				}
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
+			then.run();
+		}, "Waiting for the MCP server of Eclipse"); //$NON-NLS-1$
+		waiting.setDaemon(true);
+		waiting.start();
 	}
 
 	/** The string value of a field of a small JSON object, without escapes. */

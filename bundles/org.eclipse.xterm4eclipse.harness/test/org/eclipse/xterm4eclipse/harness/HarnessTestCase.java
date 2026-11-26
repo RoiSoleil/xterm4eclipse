@@ -16,6 +16,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
+import java.util.function.LongSupplier;
 import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -61,6 +63,8 @@ abstract class HarnessTestCase {
 	private UnaryOperator<String> previousEnvironment;
 	private McpOffer.Asker previousAsker;
 	private long previousDelay;
+	private static final LongSupplier PREVIOUS_UPTIME = EclipseMcp.uptime;
+	private static final BooleanSupplier PREVIOUS_INSTALLED = EclipseMcp.installed;
 	private ServerSocket server;
 	/** The files of the stand-in for the program of the agent. */
 	private Path stand;
@@ -79,6 +83,8 @@ abstract class HarnessTestCase {
 		Places.userHome = home;
 		Places.environment = environment::get;
 		EclipseMcp.workspace = temp.resolve("workspace");
+		// Long started: the agents do not wait for a server that the tests do not run.
+		EclipseMcp.uptime = () -> Long.MAX_VALUE;
 		McpOffer.postponed = false;
 		McpOffer.asker = (terminal, harness, url) -> {
 			asked.add(harness.id() + ' ' + url);
@@ -103,6 +109,8 @@ abstract class HarnessTestCase {
 		McpOffer.postponed = false;
 		SessionFinder.delayMillis = previousDelay;
 		EclipseMcp.workspace = null;
+		EclipseMcp.uptime = PREVIOUS_UPTIME;
+		EclipseMcp.installed = PREVIOUS_INSTALLED;
 		HarnessPlugin.preferences().setToDefault(HarnessPlugin.PREF_OFFER_ECLIPSE_MCP);
 		HarnessPlugin.preferences().setToDefault(HarnessPlugin.PREF_ADD_ECLIPSE_MCP_WITHOUT_ASKING);
 		TestWorkbench.setDefaultCommandLine("");

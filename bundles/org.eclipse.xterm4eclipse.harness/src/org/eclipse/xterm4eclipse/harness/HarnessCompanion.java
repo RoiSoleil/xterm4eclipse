@@ -47,7 +47,21 @@ final class HarnessCompanion implements TerminalCompanion {
 	public boolean beforeStart(Runnable start) {
 		Harnesses.Found found = Harnesses.find(terminal.commandLine());
 		Display display = Display.getCurrent();
-		return found != null && display != null && McpOffer.offer(terminal, harness, found.invocation(), display, start);
+		if (found == null || display == null) {
+			return false;
+		}
+		if (EclipseMcp.starting()) {
+			// A terminal that Eclipse reopens starts before the server listens: without its port and
+			// its token, the agent would never reach it.
+			terminal.print("Waiting for the MCP server of Eclipse..."); //$NON-NLS-1$
+			EclipseMcp.whenListening(() -> HarnessPlugin.later(display, () -> {
+				if (!terminal.isDisposed() && !McpOffer.offer(terminal, harness, found.invocation(), display, start)) {
+					start.run();
+				}
+			}));
+			return true;
+		}
+		return McpOffer.offer(terminal, harness, found.invocation(), display, start);
 	}
 
 	@Override
