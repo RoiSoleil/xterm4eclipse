@@ -220,7 +220,7 @@ final class ConversationDialog extends Dialog {
 			}
 		});
 		viewer.setInput(conversations);
-		viewer.addDoubleClickListener(event -> okPressed());
+		viewer.addDoubleClickListener(event -> buttonPressed(bothTargets ? TERMINAL : OK));
 		viewer.addSelectionChangedListener(event -> {
 			updateOk();
 			showDetails();
@@ -417,8 +417,8 @@ final class ConversationDialog extends Dialog {
 		createButton(parent, COPY_ID, "Copy Session Id", false);
 		createButton(parent, OPEN_FILE, "Open File", false);
 		if (bothTargets) {
-			createButton(parent, TERMINAL, "Resume in a Terminal", false);
-			createButton(parent, OK, "Resume in a Chat", true);
+			createButton(parent, TERMINAL, "Resume in a Terminal", true);
+			createButton(parent, OK, "Resume in a Chat", false);
 		} else {
 			createButton(parent, OK, IDialogConstants.OK_LABEL, true);
 		}

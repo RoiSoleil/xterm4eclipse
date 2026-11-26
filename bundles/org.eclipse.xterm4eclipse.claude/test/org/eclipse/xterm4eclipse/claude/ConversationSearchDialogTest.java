@@ -212,6 +212,7 @@ class ConversationSearchDialogTest {
 			dialog.buttonPressed(ConversationDialog.OPEN_FILE);
 			assertEquals(1, opened.size());
 			assertTrue(opened.get(0).toString().endsWith(ConversationSearchTest.C + ".jsonl"));
+			assertEquals("Resume in a Terminal", dialog.getShell().getDefaultButton().getText());
 			dialog.buttonPressed(ConversationDialog.TERMINAL);
 			assertEquals(Window.OK, dialog.getReturnCode());
 			assertTrue(dialog.inTerminal());
