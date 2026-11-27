@@ -152,8 +152,10 @@
 
 		// File paths printed by compilers, test runners, grep, git...: Ctrl+click opens them in Eclipse,
 		// at the line and column given with them (file:12:5, file(12,5), File "file", line 12); a
-		// folder opens in the file manager of the system.
+		// folder opens in the file manager of the system. Ctrl+right click opens the folder of the file
+		// in the file manager instead.
 		var hoveredLine = 0;
+		var hoveredFileLink = false;
 		term.registerLinkProvider({
 			provideLinks: function (y, callback) {
 				hoveredLine = y;
@@ -179,12 +181,21 @@
 					range: { start: { x: candidate.start + 1, y: y }, end: { x: candidate.end, y: y } },
 					text: candidate.text,
 					decorations: { pointerCursor: true, underline: true },
+					hover: function () {
+						hoveredFileLink = true;
+					},
+					leave: function () {
+						hoveredFileLink = false;
+					},
 					activate: function (e) {
 						if (!(e.ctrlKey || e.metaKey)) {
 							return;
 						}
 						// A folder: its path ends with a separator.
-						if (/[\\\/]$/.test(file)) {
+						var folder = /[\\\/]$/.test(file);
+						if (e.button === 2) {
+							javaOpenFolder(folder ? file : file.replace(/[^\\\/]+$/, ''));
+						} else if (folder) {
 							javaOpenFolder(file);
 						} else {
 							javaOpenFile(file, candidate.line, candidate.column);
@@ -256,7 +267,7 @@
 					text: bang.text,
 					decorations: { pointerCursor: true, underline: true },
 					activate: function (e) {
-						if (e.ctrlKey || e.metaKey) {
+						if ((e.ctrlKey || e.metaKey) && e.button !== 2) {
 							runBangCommand(bang.command);
 						}
 					}
@@ -536,6 +547,10 @@
 		// doing it here too would paste twice. Shift+right click bypasses the program, as in xterm.
 		container.addEventListener('contextmenu', function (e) {
 			e.preventDefault();
+			// Ctrl+right click on a file opens its folder: no copy nor paste.
+			if (hoveredFileLink && (e.ctrlKey || e.metaKey)) {
+				return;
+			}
 			if (term.modes.mouseTrackingMode !== 'none' && !e.shiftKey) {
 				return;
 			}

@@ -1794,6 +1794,38 @@ class XtermViewTest {
 	}
 
 	@Test
+	void ctrlRightClickOnAFileOpensItsFolder() throws Exception {
+		Path directory = Files.createTempDirectory("xterm-folders");
+		Files.createDirectories(directory.resolve("src"));
+		Files.writeString(directory.resolve("src/notes.txt"), "");
+		List<String> opened = new ArrayList<>();
+		XtermView view = open(new XtermView() {
+			@Override
+			void openFile(File file, int line, int column) {
+				opened.add("file " + file.getName());
+			}
+
+			@Override
+			void openFolder(File folder) {
+				opened.add("folder " + folder.getName());
+			}
+		});
+		view.browser.execute("window.javaPaste = function () { window.pastedByTest = true; return ''; };");
+		run(view, "cd '" + shellPath(directory.toFile().getCanonicalFile()) + "' && echo \"see src/notes.txt here\"",
+				"txt here");
+
+		awaitLink(view, "src/notes.txt");
+		rightClick(view, "src/notes.txt", true);
+		await("folder opened", () -> opened.size() == 1);
+		assertEquals("folder src", opened.get(0), "the folder of the file opens, not the file");
+		pump(300);
+		assertEquals(1, opened.size());
+		assertEquals(null, view.browser.evaluate("return window.pastedByTest === undefined ? null : 'pasted'"),
+				"Ctrl+right click on a link does not paste");
+		deleteTree(directory);
+	}
+
+	@Test
 	void foldersAreFoundInTheOutput() throws Exception {
 		File directory = Files.createTempDirectory("xterm-folders").toFile().getCanonicalFile();
 		File reports = new File(directory, "build/reports");
@@ -1841,13 +1873,22 @@ class XtermViewTest {
 
 	/** Moves the mouse over the first occurrence of the text on the screen, then clicks it. */
 	private static void click(XtermView view, String text, boolean ctrl) {
+		click(view, text, ctrl, 0, "click"); //$NON-NLS-1$
+	}
+
+	/** Moves the mouse over the first occurrence of the text on the screen, then right clicks it. */
+	private static void rightClick(XtermView view, String text, boolean ctrl) {
+		click(view, text, ctrl, 2, "contextmenu"); //$NON-NLS-1$
+	}
+
+	private static void click(XtermView view, String text, boolean ctrl, int button, String clickEvent) {
 		String position = position(text);
 		view.browser.execute(position
 				+ "screen.dispatchEvent(new MouseEvent('mousemove', {clientX: x, clientY: y, bubbles: true}));");
 		pump(300);
-		view.browser.execute(position + "['mousedown', 'mouseup', 'click'].forEach(function (type) {"
-				+ "screen.dispatchEvent(new MouseEvent(type, {clientX: x, clientY: y, bubbles: true, button: 0, ctrlKey: "
-				+ ctrl + "})); });");
+		view.browser.execute(position + "['mousedown', 'mouseup', '" + clickEvent + "'].forEach(function (type) {"
+				+ "screen.dispatchEvent(new MouseEvent(type, {clientX: x, clientY: y, bubbles: true, cancelable: true, button: "
+				+ button + ", ctrlKey: " + ctrl + "})); });");
 		pump(300);
 	}
 
